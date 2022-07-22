@@ -1,0 +1,11 @@
+[package]
+name = "rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#flutter_rust_bridge = { git = "https://github.com/fzyzcjy/flutter_rust_bridge/tree/master/frb_rust" }
+storm_controller = { path = "../../storm_backend/storm_controller" }
+
