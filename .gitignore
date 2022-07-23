@@ -7,3 +7,5 @@ storm_frontend/lib/bridge.dart
 
 target
 ./**/target
+*.swp
+*swp

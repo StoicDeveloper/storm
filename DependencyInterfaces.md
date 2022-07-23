@@ -81,6 +81,10 @@ client.addMessageToLocalGraph(group, message)
 
 depends on plugin interface
 
+10. App -> Platform
+
+start()
+
 10. Application
 
 let node = createNode()
@@ -89,9 +93,6 @@ let accData = login(username, password)
 
 let groups = getGroups()
 let clients = getClients()
-
-11. Frontent -> Application REST API
-
 
 
 
