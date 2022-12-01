@@ -6,4 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-storm_platform = { path = '../../storm_platform' }
+bramble-rendezvous = { path = '../../bramble-rs/bramble-rendezvous' }
+#bramble-transport = "0.1.0"
+futures = "0.3.0"
+libtor = "47.8.0+0.4.7.x"
+torcc-rs = "0.1.1"
+tokio = "1.20.1"
+gag = "1.0.0"
