@@ -1,4 +1,5 @@
 use futures::io::{AsyncReadExt, AsyncWriteExt};
+use futures::select;
 use futures::{AsyncRead, AsyncWrite};
 use gag::BufferRedirect;
 use libtor::*;
@@ -10,6 +11,12 @@ use std::sync::*;
 use std::task::{Poll, Waker};
 use std::thread;
 use std::thread::JoinHandle;
+
+// Readings:
+// https://osamaelnaggar.com/blog/proxying_application_traffic_through_tor/
+// https://manpages.debian.org/stretch/tor/torrc.5.en.html
+// https://www.linuxjournal.com/content/tor-hidden-services
+// https://docs.rs/async-socks5/latest/async_socks5/
 
 pub const CONTROL_PORT: u16 = 9151;
 pub const SERVICE_PORT: u16 = 9150;
@@ -60,7 +67,7 @@ pub struct TorInstance {
     error: bool,
 }
 impl TorInstance {
-    fn new() -> Self {
+    fn new(services: Vec<u16>) -> Self {
         let output = Arc::new(Mutex::new(SharedTorOutputState {
             waker: None,
             output: VecDeque::new(),
@@ -68,11 +75,24 @@ impl TorInstance {
         let output_queue = output.clone();
         let tor_monitor = thread::spawn(move || {
             let mut buf = BufferRedirect::stdout().unwrap();
-            Tor::new()
-                .flag(TorFlag::DataDirectory("/tmp/tor-rust".into()))
-                .start_background();
+            let mut tor = Tor::new();
+            tor.flag(TorFlag::DataDirectory("/tmp/tor-rust".into()));
+            tor.flag(TorFlag::SocksPort(19050));
+            let mut count = 0;
+            for port in services {
+                tor.flag(TorFlag::HiddenServiceDir(
+                    format!("hidden_services/{}", count).into(),
+                ));
+                tor.flag(TorFlag::HiddenServiceVersion(HiddenServiceVersion::V3));
+                tor.flag(TorFlag::HiddenServicePort(
+                    TorAddress::Port(port),
+                    None.into(),
+                ));
+                count += 1;
+            }
+            tor.start_background();
             let mut output = String::new();
-            eprintln!("hello world");
+            //eprintln!("hello world");
             loop {
                 let res = buf.read_to_string(&mut output);
                 match res {
@@ -85,7 +105,7 @@ impl TorInstance {
                         break;
                     }
                     Ok(n) => {
-                        eprintln!("read {} bytes", n);
+                        //eprintln!("read {} bytes", n);
                     }
                 }
                 let mut out = output_queue.lock().unwrap();
@@ -94,7 +114,7 @@ impl TorInstance {
                     (*out).output.push_back(TorOutput::process_output(line));
                 }
                 if let Some(waker) = (*out).waker.take() {
-                    eprintln!("waking in loop");
+                    //eprintln!("waking in loop");
                     waker.wake();
                 }
                 output.clear();
@@ -108,7 +128,6 @@ impl TorInstance {
             (*out).output.push_back(TorOutput::Exited);
         });
 
-        println!("hello world2");
         Self {
             tor_monitor,
             output,
@@ -157,36 +176,20 @@ impl<'t> Future for TorStarting<'t> {
     ) -> std::task::Poll<Self::Output> {
         self.instance.process_output();
         let mut state = self.instance.output.lock().unwrap();
-        println!("poll");
-        eprintln!("poll");
+        //println!("poll");
+        //eprintln!("poll");
         if self.instance.started {
-            eprintln!("ready");
+            //eprintln!("ready");
             Poll::Ready(())
         } else {
             // May need an array of wakers
-            eprintln!("pending");
+            //eprintln!("pending");
             state.waker = Some(cx.waker().clone());
             Poll::Pending
         }
     }
 }
-//fn start_background() -> mpsc::Receiver<bool> {
-//let (tx, rx) = mpsc::channel();
-//let (ty, ry) = mpsc::channel();
-//let mut started = false;
-//for n in 1..30 {
-//started = tor_output.contains("Bootstrapped 100% (done): Done");
 
-//if started {
-//started = true;
-//tx.send(started).unwrap();
-//break;
-//}
-//std::thread::sleep(std::time::Duration::from_secs(1));
-//}
-//ty.send(started).unwrap();
-//});
-//}
 struct TorConnection {}
 impl TorConnection {}
 
@@ -228,9 +231,16 @@ impl AsyncRead for TorConnection {
 mod test {
     use crate::tor::*;
     use futures::executor::block_on;
+    use futures::FutureExt;
+    use futures_timer::Delay;
     use gag::BufferRedirect;
     use libtor::*;
     use std::io::Read;
+    use std::net::SocketAddr;
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
     use std::sync::mpsc;
     use std::thread::{self, JoinHandle};
 
@@ -240,19 +250,19 @@ mod test {
             .flag(TorFlag::SocksPort(19050))
             .flag(TorFlag::HiddenServiceDir("hidden_services/1".into()))
             .flag(TorFlag::HiddenServicePort(
-                TorAddress::Port(8000),
+                TorAddress::Port(8004),
                 Some(TorAddress::AddressPort("127.0.0.1".into(), 5000)).into(),
             ))
             .flag(TorFlag::HiddenServiceVersion(HiddenServiceVersion::V3))
             .flag(TorFlag::HiddenServiceDir("hidden_services/2".into()))
             .flag(TorFlag::HiddenServicePort(
-                TorAddress::Port(8001),
+                TorAddress::Port(8004),
                 None.into(),
             ))
             .flag(TorFlag::HiddenServiceVersion(HiddenServiceVersion::V3))
             .flag(TorFlag::HiddenServiceDir("hidden_services/3".into()))
             .flag(TorFlag::HiddenServicePort(
-                TorAddress::Port(8002),
+                TorAddress::Port(8004),
                 None.into(),
             ))
             .flag(TorFlag::HiddenServiceVersion(HiddenServiceVersion::V3))
@@ -262,21 +272,122 @@ mod test {
             Err(e) => println!("failed to start tor"),
         }
     }
+    use async_socks5::{connect, AddrKind, SocksListener};
+    use tokio::{io::BufStream, net::TcpStream};
+
+    // This creates a dependency on tokio. To remove it in the future, if desired, look at this
+    // link: https://thomask.sdf.org/blog/2021/03/08/bridging-sync-async-code-in-rust.html
+    #[tokio::test]
+    #[ignore]
+    async fn create_tor_socket() {
+        // uses async_socks5
+        create_connection();
+        // Create Tcp conn to socks port
+        let proxy_addr = "127.0.0.1:19050".parse::<SocketAddr>().unwrap();
+        let server_url = std::fs::read_to_string("hidden_services/0/hostname").unwrap();
+        let server_addr = AddrKind::Domain(server_url, 8004);
+        //let local_server_add = AddrKind::Domain("127.0.0.1".to_string(), 8004);
+        let local_server_add = ("127.0.0.1", 8004);
+
+        let client = TcpStream::connect(&proxy_addr).await.unwrap();
+        let client = BufStream::new(client);
+        let client = SocksListener::bind(client, server_addr, None)
+            .await
+            .unwrap();
+        let mut server = TcpStream::connect(&local_server_add).await.unwrap();
+        let (mut client, _) = client.accept().await.unwrap();
+        server.write_all(b"blag").await.unwrap();
+        let mut buf = [0; 4];
+        client.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"blag");
+        //eprintln!("created stream");
+        //let mut stream = BufStream::new(stream);
+        //let listener = SocksListener::bind(
+        //let req = connect(&mut stream, (&onion_url, 8004), None);
+    }
 
     #[test]
+    #[ignore]
     fn create_connection() {
         //use libtor::{HiddenServiceVersion, Tor, TorAddress, TorFlag};
-        let mut tor = TorInstance::new();
-        block_on(tor.started());
+        let mut tor = TorInstance::new(vec![8004]);
+        block_on(async {
+            select!(
+            _ = tor.started().fuse() => {},
+            _ = Delay::new(Duration::from_secs(30)).fuse() => panic!(),
+            )
+        });
 
-        //create_tor_foreground();
+        //block_on(create_tor_socket());
 
-        //println!(
-        //"{} {}, {}",
-        //tor_conn.control_port, tor_conn.service_port, tor_conn.started
-        //);
-
-        //let rec = start_background();
-        //rec.recv().unwrap();
+        // connect to hidden service
+        // listen for socks connection on hidden service port
+        // send socks connect request over socksport
+        // see what happens
+        // print off if conn successful
     }
+
+    use std::net::{Ipv4Addr, SocketAddrV4};
+    //#[tokio::test]
+    //fn conn_rev_proxy() {
+    //create_connection();
+    //let socks_addr = SocketAddr::V4(SocketAddr::new(Ipv4Addr::LOCALHOST, 19050));
+    //let local_addr =
+    //let listener = TcpListener::bind(local_addr).await.unwrap();
+
+    //}
+
+    use tokio_socks::tcp::{Socks5Listener, Socks5Stream};
+    #[tokio::test]
+    async fn conn_tokio_socks() {
+        //let proxy_addr = SocketAddr::V4(SocketAddr::new(Ipv4Addr::LOCALHOST, 19050));
+        create_connection();
+        let proxy_addr = ("127.0.0.1", 19050);
+        let target_addr = (
+            std::fs::read_to_string("hidden_services/0/hostname")
+                .unwrap()
+                .strip_suffix("\n")
+                .unwrap()
+                .to_string(),
+            8004,
+        );
+        eprintln!("{:?}", target_addr);
+        //block_on(Delay::new(Duration::from_secs(120)));
+        //Socks5Listener::bind(proxy_addr, target_addr).await.unwrap();
+        let server_listener = TcpListener::bind("127.0.0.1:8004").await.unwrap();
+        eprintln!("listener");
+        let client_request = Socks5Stream::connect(proxy_addr, target_addr);
+        let (mut client_sock, (mut server_sock, server_addr)) = tokio::select!(
+            (client_stream, server_sock) = async {
+                tokio::join!(client_request, server_listener.accept())
+            } =>
+            {(client_stream.unwrap().into_inner(), server_sock.unwrap())},
+            _ = Delay::new(Duration::from_secs(300)).fuse() => {
+                eprintln!("timeout");
+                panic!();
+            }
+        );
+        client_sock.write_all(b"sending client msg").await;
+        let mut buf = [0u8; 50];
+        let n = server_sock.read(&mut buf).await.unwrap();
+        eprintln!(
+            "server received {}",
+            std::str::from_utf8(&buf[0..n]).unwrap()
+        );
+        server_sock.write_all(b"sending server msg").await;
+        let mut buf = [0u8; 50];
+        let n = client_sock.read(&mut buf).await.unwrap();
+        eprintln!(
+            "client received {}",
+            std::str::from_utf8(&buf[0..n]).unwrap()
+        );
+    }
+
+    // create hidden services
+
+    // pass messages from one hidden service to another
+
+    // create rendezvous connection over hidden service
+
+    // pass data from one rendezvous socket to another
 }
