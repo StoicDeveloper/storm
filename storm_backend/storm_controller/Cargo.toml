@@ -7,6 +7,11 @@ edition = "2021"
 
 [dependencies]
 bramble-rendezvous = { path = '../../bramble-rs/bramble-rendezvous' }
+bramble-common = { path = '../../bramble-rs/bramble-common' }
+bramble-crypto = { path = '../../bramble-rs/bramble-crypto' }
+rand = "0.8.5"
+portpicker = "0.1.1"
+slice_as_array = "1.1.0"
 #bramble-transport = "0.1.0"
 futures = "0.3.0"
 libtor = "47.8.0+0.4.7.x"
@@ -16,3 +21,5 @@ gag = "1.0.0"
 async-socks5 = "0.5.1"
 tokio-socks = "0.5.1"
 futures-timer = "3.0.2"
+#torut = "0.2.1"
+torut = { path = '../../torut' }

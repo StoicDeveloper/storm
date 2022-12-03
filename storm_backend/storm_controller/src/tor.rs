@@ -1,22 +1,27 @@
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use futures::select;
-use futures::{AsyncRead, AsyncWrite};
+use futures::{AsyncRead as StdAsyncRead, AsyncWrite as StdAsyncWrite};
 use gag::BufferRedirect;
 use libtor::*;
+use portpicker::pick_unused_port;
 use std::collections::VecDeque;
 use std::future::Future;
 use std::io::Read;
 use std::ops::DerefMut;
+use std::pin::Pin;
 use std::sync::*;
 use std::task::{Poll, Waker};
 use std::thread;
 use std::thread::JoinHandle;
+use tokio::io::AsyncWrite as TokioAsyncWrite;
+use tokio::net::TcpStream;
 
 // Readings:
 // https://osamaelnaggar.com/blog/proxying_application_traffic_through_tor/
 // https://manpages.debian.org/stretch/tor/torrc.5.en.html
 // https://www.linuxjournal.com/content/tor-hidden-services
 // https://docs.rs/async-socks5/latest/async_socks5/
+//
 
 pub const CONTROL_PORT: u16 = 9151;
 pub const SERVICE_PORT: u16 = 9150;
@@ -67,17 +72,36 @@ pub struct TorInstance {
     error: bool,
 }
 impl TorInstance {
-    fn new(services: Vec<u16>) -> Self {
+    pub fn get_control_port(&self) -> u16 {
+        self.control_port
+    }
+    pub async fn get_control_socket(&self) -> TcpStream {
+        eprintln!("{}", self.control_port);
+        // For some reason making the tokio stream directly would wait forever
+        let tcp = std::net::TcpStream::connect(("127.0.0.1", self.control_port)).unwrap();
+        tcp.set_nonblocking(true).unwrap();
+        eprintln!("made socket");
+        TcpStream::from_std(tcp).unwrap()
+        //TcpStream::connect(("127.0.0.1", self.control_port))
+        //.await
+        //.unwrap()
+    }
+    pub fn new(services: Vec<u16>) -> Self {
         let output = Arc::new(Mutex::new(SharedTorOutputState {
             waker: None,
             output: VecDeque::new(),
         }));
+        let control_port = pick_unused_port().unwrap();
         let output_queue = output.clone();
         let tor_monitor = thread::spawn(move || {
             let mut buf = BufferRedirect::stdout().unwrap();
             let mut tor = Tor::new();
             tor.flag(TorFlag::DataDirectory("/tmp/tor-rust".into()));
             tor.flag(TorFlag::SocksPort(19050));
+            //tor.flag(TorFlag::ControlPort(9151));
+            tor.flag(TorFlag::ControlPort(control_port));
+            tor.flag(TorFlag::ControlPortWriteToFile("control".to_string()));
+            tor.flag(TorFlag::CookieAuthentication(TorBool::True));
             let mut count = 0;
             for port in services {
                 tor.flag(TorFlag::HiddenServiceDir(
@@ -131,7 +155,7 @@ impl TorInstance {
         Self {
             tor_monitor,
             output,
-            control_port: CONTROL_PORT,
+            control_port,
             service_port: SERVICE_PORT,
             started: false,
             finished: false,
@@ -139,7 +163,7 @@ impl TorInstance {
         }
     }
 
-    fn started(&mut self) -> TorStarting {
+    pub fn started(&mut self) -> TorStarting {
         TorStarting { instance: self }
     }
 
@@ -190,34 +214,41 @@ impl<'t> Future for TorStarting<'t> {
     }
 }
 
-struct TorConnection {}
-impl TorConnection {}
+pub struct TorSocket {
+    inner: tokio::net::TcpStream,
+}
 
-impl AsyncWrite for TorConnection {
-    fn poll_write(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
-        todo!()
-    }
-
-    fn poll_flush(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        todo!()
-    }
-
-    fn poll_close(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        todo!()
+impl From<TcpStream> for TorSocket {
+    fn from(sock: TcpStream) -> Self {
+        Self { inner: sock }
     }
 }
 
-impl AsyncRead for TorConnection {
+impl StdAsyncWrite for TorSocket {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_close(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+impl StdAsyncRead for TorSocket {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -367,14 +398,14 @@ mod test {
                 panic!();
             }
         );
-        client_sock.write_all(b"sending client msg").await;
+        client_sock.write_all(b"sending client msg").await.unwrap();
         let mut buf = [0u8; 50];
         let n = server_sock.read(&mut buf).await.unwrap();
         eprintln!(
             "server received {}",
             std::str::from_utf8(&buf[0..n]).unwrap()
         );
-        server_sock.write_all(b"sending server msg").await;
+        server_sock.write_all(b"sending server msg").await.unwrap();
         let mut buf = [0u8; 50];
         let n = client_sock.read(&mut buf).await.unwrap();
         eprintln!(
