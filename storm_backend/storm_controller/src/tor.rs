@@ -6,7 +6,7 @@ use libtor::*;
 use portpicker::pick_unused_port;
 use std::collections::VecDeque;
 use std::future::Future;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::*;
@@ -65,7 +65,8 @@ impl TorOutput {
 pub struct TorInstance {
     tor_monitor: JoinHandle<()>,
     output: Arc<Mutex<SharedTorOutputState>>,
-    control_port: u16,
+    pub control_socket: Option<std::net::TcpStream>,
+    pub control_port: u16,
     service_port: u16,
     started: bool,
     finished: bool,
@@ -86,6 +87,10 @@ impl TorInstance {
         //.await
         //.unwrap()
     }
+    //pub fn set_control_socket(&mut self) {
+    //self.control_socket =
+    //Some(std::net::TcpStream::connect(("127.0.0.1", self.control_port)).unwrap());
+    //}
     pub fn new(services: Vec<u16>) -> Self {
         let output = Arc::new(Mutex::new(SharedTorOutputState {
             waker: None,
@@ -101,7 +106,7 @@ impl TorInstance {
             //tor.flag(TorFlag::ControlPort(9151));
             tor.flag(TorFlag::ControlPort(control_port));
             tor.flag(TorFlag::ControlPortWriteToFile("control".to_string()));
-            tor.flag(TorFlag::CookieAuthentication(TorBool::True));
+            //tor.flag(TorFlag::CookieAuthentication(TorBool::True));
             let mut count = 0;
             for port in services {
                 tor.flag(TorFlag::HiddenServiceDir(
@@ -155,6 +160,7 @@ impl TorInstance {
         Self {
             tor_monitor,
             output,
+            control_socket: None,
             control_port,
             service_port: SERVICE_PORT,
             started: false,
@@ -255,6 +261,51 @@ impl StdAsyncRead for TorSocket {
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         todo!()
+    }
+}
+
+pub struct TorControl {
+    inner: std::net::TcpStream,
+}
+
+impl TorControl {
+    pub fn new(port: u16) -> Self {
+        let mut control = Self {
+            inner: std::net::TcpStream::connect(("127.0.0.1", port)).unwrap(),
+        };
+        control.auth();
+        control
+    }
+    fn send(&mut self, command: &[u8]) {
+        eprintln!("{}", std::str::from_utf8(command).unwrap().to_string());
+        self.inner.write_all(command).unwrap();
+    }
+    fn reply(&mut self) -> String {
+        let mut buf = [0u8; 200];
+        let n = self.inner.read(&mut buf).unwrap();
+        let reply = std::str::from_utf8(&buf[0..n]).unwrap().to_string();
+        eprintln!("{}", &reply);
+        reply
+    }
+    fn auth(&mut self) -> bool {
+        self.send(b"AUTHENTICATE \r\n");
+        self.reply().contains("250 OK")
+    }
+    pub fn add_onion_v3(
+        &mut self,
+        key: torut::onion::TorSecretKeyV3,
+        port: u16,
+    ) -> bramble_common::Result<()> {
+        let mut res = String::new();
+        res.push_str("ADD_ONION ED25519-V3:");
+        res.push_str(&base64::encode(&key.as_bytes()));
+        res.push_str(" Flags=DiscardPK ");
+        res.push_str(&format!("Port={},{}:{}", 1917, "127.0.0.1", port));
+        res.push_str(" \r\n");
+
+        self.send(res.as_bytes());
+        assert!(self.reply().contains("250 OK"));
+        Ok(())
     }
 }
 

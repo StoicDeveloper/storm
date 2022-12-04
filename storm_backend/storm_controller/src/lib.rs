@@ -3,6 +3,7 @@
 #![feature(associated_type_bounds)]
 #![feature(const_socketaddr)]
 #[allow(unused_imports)]
+#[allow(dead_code)]
 mod controller;
 #[allow(unused_macros)]
 #[macro_use]

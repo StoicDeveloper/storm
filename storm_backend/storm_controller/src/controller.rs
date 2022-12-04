@@ -14,8 +14,9 @@ use tokio::net::TcpStream;
 use torcc_rs::controller::{HiddenService, TorController};
 
 use gag::BufferRedirect;
-use std::io::Read;
-use std::sync::mpsc;
+use std::io::{Read, Write};
+use std::rc::Rc;
+use std::sync::{mpsc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 //use std::error::Error;
@@ -37,7 +38,7 @@ const SERVICE_PORT: u16 = 9150;
 
 pub struct StormController {
     tor: TorInstance,
-    tor_controller: Option<crate::rendezvous::TorControl>,
+    tor_controller: Rc<Mutex<crate::tor::TorControl>>,
     key: KeyPair,
 }
 
@@ -46,41 +47,93 @@ impl StormController {
         eprintln!("making tor instance");
         let mut tor = TorInstance::new(vec![]);
         block_on(tor.started());
-        let mut cont = Self {
+        let tor_controller = Rc::new(Mutex::new(crate::tor::TorControl::new(tor.control_port)));
+        let cont = Self {
             tor,
-            tor_controller: None,
+            tor_controller,
             key,
         };
         eprintln!("making auth tor conn");
-        block_on(cont.mk_auth_tor_conn());
+        //block_on(cont.mk_auth_tor_conn());
+        //cont.tor.set_control_socket();
+        //cont.load_protocol_info();
         cont
     }
 
-    async fn mk_auth_tor_conn(&mut self) {
-        eprintln!("1");
-        //let stream = TcpStream::connect(CONTROL_ADDR).await.unwrap();
-        let stream = self.tor.get_control_socket().await;
-        eprintln!("1.5");
-        let mut utc = UnauthenticatedConn::new(stream);
-        eprintln!("2");
-        Delay::new(Duration::from_secs(10)).await;
-        let info = utc.load_protocol_info().await.unwrap();
-        let ad = info.make_auth_data().unwrap().unwrap();
-        eprintln!("3");
-        utc.authenticate(&ad).await.unwrap();
-        eprintln!("4");
-        self.tor_controller = Some(utc.into_authenticated().await);
+    //async fn mk_auth_tor_conn(&mut self) {
+    //eprintln!("1");
+    ////let stream = TcpStream::connect(CONTROL_ADDR).await.unwrap();
+    //let stream = self.tor.get_control_socket().await;
+    //eprintln!("1.5");
+    //let mut utc = UnauthenticatedConn::new(stream);
+    //eprintln!("2");
+    //Delay::new(Duration::from_secs(10)).await;
+    //let info = utc.load_protocol_info().await.unwrap();
+    //let ad = info.make_auth_data().unwrap().unwrap();
+    //eprintln!("3");
+    //utc.authenticate(&ad).await.unwrap();
+    //eprintln!("4");
+    //self.tor_controller = Some(utc.into_authenticated().await);
+    //}
+
+    fn load_protocol_info(&mut self) {
+        self.tor
+            .control_socket
+            .as_ref()
+            .unwrap()
+            .write_all(b"PROTOCOLINFO 1\r\n")
+            .unwrap();
+        let mut buf = [0u8; 200];
+        let n = self
+            .tor
+            .control_socket
+            .as_ref()
+            .unwrap()
+            .read(&mut buf)
+            .unwrap();
+        eprintln!("{}", std::str::from_utf8(&buf[0..n]).unwrap());
+        self.tor
+            .control_socket
+            .as_ref()
+            .unwrap()
+            .write_all(b"AUTHENTICATE \r\n")
+            .unwrap();
+        let mut buf = [0u8; 200];
+        let n = self
+            .tor
+            .control_socket
+            .as_ref()
+            .unwrap()
+            .read(&mut buf)
+            .unwrap();
+        eprintln!("{}", std::str::from_utf8(&buf[0..n]).unwrap());
+        self.tor
+            .control_socket
+            .as_ref()
+            .unwrap()
+            .write_all(b"GETINFO \r\n")
+            .unwrap();
+        let mut buf = [0u8; 200];
+        let n = self
+            .tor
+            .control_socket
+            .as_ref()
+            .unwrap()
+            .read(&mut buf)
+            .unwrap();
+        eprintln!("{}", std::str::from_utf8(&buf[0..n]).unwrap());
     }
 
-    async fn create_connection(&mut self, peer: PublicKey) -> TorSocket {
+    pub async fn create_connection(&mut self, peer: PublicKey) -> TorSocket {
         let (rendezvous_conn, _, _) = bramble_rendezvous::perform_rendezvous(
-            StormRendezvous::new(self.tor_controller.take().unwrap()),
+            StormRendezvous::new(self.tor_controller.clone()),
             self.key,
             peer,
         )
         .await
         .unwrap();
-        self.mk_auth_tor_conn().await;
+        //self.mk_auth_tor_conn().await;
+        eprintln!("connection made");
         rendezvous_conn
     }
 }
@@ -234,7 +287,15 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn create_controller() {
         StormController::new(key());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn controller_create_tor_socket() {
+        let mut cont = StormController::new(key());
+        cont.create_connection(*key().public()).await;
     }
 }

@@ -1036,9 +1036,11 @@ name = "storm_controller"
 version = "0.1.0"
 dependencies = [
  "async-socks5",
+ "base64",
  "bramble-common",
  "bramble-crypto",
  "bramble-rendezvous",
+ "ed25519-dalek",
  "futures",
  "futures-timer",
  "gag",

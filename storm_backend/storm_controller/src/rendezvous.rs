@@ -1,3 +1,4 @@
+use crate::tor::*;
 use bramble_common::transport::Id;
 use bramble_common::Result;
 use bramble_crypto::Role;
@@ -8,9 +9,12 @@ use futures::future::ready;
 use futures::future::LocalBoxFuture;
 use futures::future::Ready;
 use futures::Future;
+use portpicker::pick_unused_port;
 use slice_as_array::{slice_as_array, slice_as_array_transmute};
 use std::cell::OnceCell;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::rc::Rc;
+use std::sync::Mutex;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_socks::tcp::Socks5Stream;
@@ -30,19 +34,20 @@ fn do_nothing(event: AsyncEvent<'static>) -> Ready<Result<()>> {
     ready(Ok(()))
 }
 
-pub type TorControl = AuthenticatedConn<
-    TcpStream,
-    Box<dyn Fn(AsyncEvent<'static>) -> Ready<std::result::Result<(), ConnError>>>,
->;
+//pub type TorControl = AuthenticatedConn<
+//TcpStream,
+//Box<dyn Fn(AsyncEvent<'static>) -> Ready<std::result::Result<(), ConnError>>>,
+//>;
 
 pub struct StormRendezvous {
     //control: AuthenticatedConn<TcpStream, AsyncEventCallback>,
-    control: TorControl,
+    control: Rc<Mutex<TorControl>>,
     peer_addr: OnceCell<OnionAddressV3>,
+    listener: Option<TcpListener>,
 }
 
 impl StormRendezvous {
-    pub fn new(control: TorControl) -> Self
+    pub fn new(control: Rc<Mutex<TorControl>>) -> Self
 //fn new(control: &mut AuthenticatedConn<TcpStream, F>)
     //where
     //F: Fn(AsyncEvent<'static>) -> Future<Output = Result<(), torut::control::ConnError>>,
@@ -51,6 +56,7 @@ impl StormRendezvous {
         Self {
             control,
             peer_addr: OnceCell::new(),
+            listener: None,
         }
     }
 }
@@ -60,17 +66,25 @@ impl Id for StormRendezvous {
     const ID: &'static [u8] = BRP_ID;
 }
 
-fn calc_onion_addr(key: &[u8; 32]) -> torut::onion::OnionAddressV3 {
+fn calc_onion_addr(seed: &[u8; 32]) -> torut::onion::OnionAddressV3 {
     // from slice, get bramble secret key
     // from secret key, get public key
     // from public key, get url
-    let secret_key: bramble_crypto::SecretKey = (*key).into();
-    let key_pair: bramble_crypto::KeyPair = secret_key.into();
-    let public_key = key_pair.public();
-    let tor_pub_key =
-        &TorPublicKeyV3::from_bytes(slice_as_array!(public_key.as_ref(), [u8; 32]).unwrap())
-            .unwrap();
-    tor_pub_key.into()
+    //let secret_key: bramble_crypto::SecretKey = (*seed).into();
+    //let key_pair: bramble_crypto::KeyPair = secret_key.into();
+    //let public_key = key_pair.public();
+    //let tor_pub_key =
+    //&TorPublicKeyV3::from_bytes(slice_as_array!(public_key.as_ref(), [u8; 32]).unwrap())
+    //.unwrap();
+    //tor_pub_key.into()
+
+    // Instead
+    // use seed as ed25519 private key, convert to ed25519 public key
+    // convert public key to TorPublicKeyV3, convert that to onion
+    let secret: &ed25519_dalek::SecretKey = &ed25519_dalek::SecretKey::from_bytes(seed).unwrap();
+    let public: ed25519_dalek::PublicKey = secret.into();
+    let tor_public = &TorPublicKeyV3::from_bytes(&public.to_bytes()).unwrap();
+    tor_public.into()
 }
 
 fn tor_key_pair_from_public_key_slice(slice: &[u8; 32]) -> TorSecretKeyV3 {
@@ -89,7 +103,9 @@ impl Rendezvous for StormRendezvous {
     type ListenFuture = LocalBoxFuture<'static, Result<Self::Connection>>;
     type ConnectFuture = LocalBoxFuture<'static, Result<Self::Connection>>;
 
+    #[allow(unused_must_use)]
     fn prepare_endpoints(&mut self, stream_key: SymmetricKey, role: Role) {
+        eprintln!("prepare_endpoints");
         let mut key_material = [0u8; 64];
         bramble_crypto::stream(&stream_key, &mut key_material);
         let alice_seed = key_material[0..32].try_into().unwrap();
@@ -99,39 +115,52 @@ impl Rendezvous for StormRendezvous {
             Role::Bob => (calc_onion_addr(&alice_seed), &bob_seed),
         };
 
-        block_on(self.control.add_onion_v3(
-            &tor_key_pair_from_public_key_slice(our_tor_key),
-            false,
-            false,
-            false,
-            None,
-            &mut Some((ONION_SERVICE_PORT, ONION_ADDR)).iter(),
-        ))
-        .unwrap();
+        let mut tor_cont = self.control.lock().unwrap();
+        let port = pick_unused_port().unwrap();
+        self.listener
+            .insert(block_on(TcpListener::bind(&format!("127.0.0.1:{}", port))).unwrap());
+        //.add_onion_v3(
+        //&tor_key_pair_from_public_key_slice(our_tor_key),
+        //false,
+        //false,
+        //false,
+        //None,
+        //&mut Some((ONION_SERVICE_PORT, ONION_ADDR)).iter(),
+        //
+        //)
+        tor_cont
+            .add_onion_v3(tor_key_pair_from_public_key_slice(our_tor_key), port)
+            .unwrap();
 
         self.peer_addr.set(target_addr).unwrap();
+        eprintln!("end prepare_endpoints");
 
         // calculate contact's url, and create own hidden service using seed
     }
 
     fn listen(&mut self) -> Self::ListenFuture {
-        Box::pin(async_listen())
+        eprintln!("listen");
+        let res = Box::pin(async_listen(self.listener.take().unwrap()));
+        eprintln!("end listen");
+        res
     }
 
     fn connect(&mut self) -> Self::ConnectFuture {
-        Box::pin(async_connect(self.peer_addr.get().unwrap().clone()))
+        eprintln!("connect");
+        let res = Box::pin(async_connect(self.peer_addr.get().unwrap().clone()));
+        eprintln!("end connect");
+        res
     }
 }
 
-async fn async_listen() -> Result<TorSocket> {
-    let server_listener = TcpListener::bind("127.0.0.1:1917").await.unwrap();
-    Ok(server_listener.accept().await.unwrap().0.into())
+async fn async_listen(listener: TcpListener) -> Result<TorSocket> {
+    Ok(listener.accept().await.unwrap().0.into())
 }
 
 async fn async_connect(addr: OnionAddressV3) -> Result<TorSocket> {
     Ok(Socks5Stream::connect(
         ("127.0.0.1", TOR_PROXY_PORT),
-        addr.get_address_without_dot_onion() + ".onion",
+        addr.get_address_without_dot_onion() + ".onion:1917",
     )
     .await
     .unwrap()
