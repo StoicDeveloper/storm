@@ -96,6 +96,15 @@ fn tor_key_pair_from_public_key_slice(slice: &[u8; 32]) -> TorSecretKeyV3 {
     buf.into()
 }
 
+fn get_tor_secret(seed: &[u8; 32]) -> TorSecretKeyV3 {
+    // Get normal ed25519 secret key,
+    // convert to expanded secret key
+
+    let secret: ed25519_dalek::SecretKey = ed25519_dalek::SecretKey::from_bytes(seed).unwrap();
+    let expanded = ed25519_dalek::ExpandedSecretKey::from(&secret);
+    expanded.to_bytes().into()
+}
+
 impl Rendezvous for StormRendezvous {
     type Connection = TorSocket;
 
@@ -106,14 +115,23 @@ impl Rendezvous for StormRendezvous {
     #[allow(unused_must_use)]
     fn prepare_endpoints(&mut self, stream_key: SymmetricKey, role: Role) {
         eprintln!("prepare_endpoints");
+
+        eprintln!("{:?}", stream_key);
         let mut key_material = [0u8; 64];
         bramble_crypto::stream(&stream_key, &mut key_material);
         let alice_seed = key_material[0..32].try_into().unwrap();
         let bob_seed = key_material[32..64].try_into().unwrap();
-        let (target_addr, our_tor_key): (OnionAddressV3, &[u8; 32]) = match role {
-            Role::Alice => (calc_onion_addr(&bob_seed), &alice_seed),
-            Role::Bob => (calc_onion_addr(&alice_seed), &bob_seed),
+        //let (target_addr, our_tor_key): (OnionAddressV3, &[u8; 32]) = match role {
+        //Role::Alice => (calc_onion_addr(&bob_seed), &alice_seed),
+        //Role::Bob => (calc_onion_addr(&alice_seed), &bob_seed),
+        //};
+        let (peer_secret, our_secret): (TorSecretKeyV3, TorSecretKeyV3) = match role {
+            Role::Alice => (get_tor_secret(bob_seed), get_tor_secret(alice_seed)),
+            Role::Bob => (get_tor_secret(alice_seed), get_tor_secret(bob_seed)),
         };
+        //eprintln!("their address {}", &target_addr);
+        eprintln!("their secret {:?}", &peer_secret.as_bytes());
+        eprintln!("our secret {:?}", &our_secret.as_bytes());
 
         let mut tor_cont = self.control.lock().unwrap();
         let port = pick_unused_port().unwrap();
@@ -129,10 +147,13 @@ impl Rendezvous for StormRendezvous {
         //
         //)
         tor_cont
-            .add_onion_v3(tor_key_pair_from_public_key_slice(our_tor_key), port)
+            //.add_onion_v3(tor_key_pair_from_public_key_slice(our_tor_key), port)
+            .add_onion_v3(our_secret, port)
             .unwrap();
 
-        self.peer_addr.set(target_addr).unwrap();
+        let onion = peer_secret.public().get_onion_address();
+        eprintln!("Their address: {}", &onion);
+        self.peer_addr.set(onion).unwrap();
         eprintln!("end prepare_endpoints");
 
         // calculate contact's url, and create own hidden service using seed
@@ -162,8 +183,7 @@ async fn async_connect(addr: OnionAddressV3) -> Result<TorSocket> {
         ("127.0.0.1", TOR_PROXY_PORT),
         addr.get_address_without_dot_onion() + ".onion:1917",
     )
-    .await
-    .unwrap()
+    .await?
     .into_inner()
     .into())
 }

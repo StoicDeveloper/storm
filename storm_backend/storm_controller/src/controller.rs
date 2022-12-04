@@ -37,17 +37,18 @@ const CONTROL_ADDR: (&'static str, u16) = ("127.0.0.1", CONTROL_PORT);
 const SERVICE_PORT: u16 = 9150;
 
 pub struct StormController {
-    tor: TorInstance,
+    tor: Rc<Mutex<TorInstance>>,
     tor_controller: Rc<Mutex<crate::tor::TorControl>>,
     key: KeyPair,
 }
 
 impl StormController {
-    fn new(key: KeyPair) -> Self {
+    fn new(tor: Rc<Mutex<TorInstance>>, key: KeyPair) -> Self {
         eprintln!("making tor instance");
-        let mut tor = TorInstance::new(vec![]);
-        block_on(tor.started());
-        let tor_controller = Rc::new(Mutex::new(crate::tor::TorControl::new(tor.control_port)));
+        block_on(tor.lock().unwrap().started());
+        let tor_controller = Rc::new(Mutex::new(crate::tor::TorControl::new(
+            tor.lock().unwrap().control_port,
+        )));
         let cont = Self {
             tor,
             tor_controller,
@@ -58,70 +59,6 @@ impl StormController {
         //cont.tor.set_control_socket();
         //cont.load_protocol_info();
         cont
-    }
-
-    //async fn mk_auth_tor_conn(&mut self) {
-    //eprintln!("1");
-    ////let stream = TcpStream::connect(CONTROL_ADDR).await.unwrap();
-    //let stream = self.tor.get_control_socket().await;
-    //eprintln!("1.5");
-    //let mut utc = UnauthenticatedConn::new(stream);
-    //eprintln!("2");
-    //Delay::new(Duration::from_secs(10)).await;
-    //let info = utc.load_protocol_info().await.unwrap();
-    //let ad = info.make_auth_data().unwrap().unwrap();
-    //eprintln!("3");
-    //utc.authenticate(&ad).await.unwrap();
-    //eprintln!("4");
-    //self.tor_controller = Some(utc.into_authenticated().await);
-    //}
-
-    fn load_protocol_info(&mut self) {
-        self.tor
-            .control_socket
-            .as_ref()
-            .unwrap()
-            .write_all(b"PROTOCOLINFO 1\r\n")
-            .unwrap();
-        let mut buf = [0u8; 200];
-        let n = self
-            .tor
-            .control_socket
-            .as_ref()
-            .unwrap()
-            .read(&mut buf)
-            .unwrap();
-        eprintln!("{}", std::str::from_utf8(&buf[0..n]).unwrap());
-        self.tor
-            .control_socket
-            .as_ref()
-            .unwrap()
-            .write_all(b"AUTHENTICATE \r\n")
-            .unwrap();
-        let mut buf = [0u8; 200];
-        let n = self
-            .tor
-            .control_socket
-            .as_ref()
-            .unwrap()
-            .read(&mut buf)
-            .unwrap();
-        eprintln!("{}", std::str::from_utf8(&buf[0..n]).unwrap());
-        self.tor
-            .control_socket
-            .as_ref()
-            .unwrap()
-            .write_all(b"GETINFO \r\n")
-            .unwrap();
-        let mut buf = [0u8; 200];
-        let n = self
-            .tor
-            .control_socket
-            .as_ref()
-            .unwrap()
-            .read(&mut buf)
-            .unwrap();
-        eprintln!("{}", std::str::from_utf8(&buf[0..n]).unwrap());
     }
 
     pub async fn create_connection(&mut self, peer: PublicKey) -> TorSocket {
@@ -138,149 +75,15 @@ impl StormController {
     }
 }
 
-// TODO: DELETE
-//impl RendezvousSocket {
-//pub fn read(&self, size: u16) -> &str {
-//"reading"
-//}
-//pub fn write(&self, msg: String) -> () {}
-//pub fn close(&self) -> () {}
-//}
-
-// TODO: DELETE
-//impl StormTor {
-//pub fn start() -> StormBRP {
-//match Tor::new()
-//.flag(TorFlag::DataDirectory("/tmp/tor-rust".into()))
-//.start()
-//{
-//Ok(v) => println!("started tor"),
-//Err(e) => println!("failed to start tor"),
-//}
-
-//StormTor {
-//control_port: CONTROL_PORT,
-//service_port: SERVICE_PORT,
-//started: true,
-//finished: false,
-//}
-//}
-
-//pub fn is_running(&self) -> bool {
-//self.started && !self.finished
-//}
-
-//pub fn start_background() -> StormBRP {
-//let (tx, rx) = mpsc::channel();
-//let (ty, ry) = mpsc::channel();
-//let mut brp = StormBRP {
-//control_port: CONTROL_PORT,
-//service_port: SERVICE_PORT,
-//started: false,
-//finished: false,
-//};
-
-//let tor_monitor = thread::spawn(move || {
-//let mut buf = BufferRedirect::stdout().unwrap();
-//let mut tor_output = String::new();
-//let tor_handle = Tor::new()
-//.flag(TorFlag::DataDirectory("/tmp/tor-rust".into()))
-////.start_background().unwrap();
-//.start_background();
-//let mut started = false;
-//for n in 1..30 {
-//buf.read_to_string(&mut tor_output).unwrap();
-//started = tor_output.contains("Bootstrapped 100% (done): Done");
-
-//if started {
-//started = true;
-//tx.send(started).unwrap();
-//break;
-//}
-//std::thread::sleep(std::time::Duration::from_secs(1));
-//}
-//if !started {
-//tx.send(started).unwrap();
-//}
-//torHandle.join();
-
-// do something with this value
-// maybe send the receiver into stormbrp and check it when needed
-//ty.send(true).unwrap();
-//});
-
-//let started = rx.recv().unwrap();
-//brp.started = started;
-//brp
-//}
-
-//pub fn rendezvous(secret_key: [u8; 32], public_key: [u8; 32]) -> RendezvousSocket {
-//RendezvousSocket {
-//open: true,
-//port: 6969,
-//}
-//}
-
-//pub fn stop(&self) -> () {}
-//}
-
-//impl StormController {
-//fn make_connection(device: KeyPair, peer: PublicKey) -> StormRendezvous {
-//let (stream, sym_key, role) =
-//perform_rendezvous(StormRendezvous {}, KeyPair, PublicKey).await?;
-//let mut transport_stream = Connection::new(stream, sym_key, role, 98).unwrap();
-//transport_stream
-//}
-
-//pub fn get_account_keys(password: &str) -> Vec<KeyPair> {
-//// TODO: Replace with a storage system
-//vec![KeyPair::generate(&thread_rng())]
-//}
-
-//pub fn initialize(password: &str) -> () {
-//let tor = start();
-//let sync = SyncProtocol {
-//device: get_account_keys(password)[0],
-//clients: HashSet::from([Stub {}]),
-//connections: vec![],
-//transport,
-//storage,
-//};
-//}
-//}
-
-//fn main() {
-//println!("Hello, world!");
-//let brp: StormBRP = StormBRP::start();
-//println!("{} {}, {}", brp.control_port, brp.service_port, brp.started);
-
-//match Tor::new()
-//.flag(TorFlag::DataDirectory("/tmp/tor-rust".into()))
-//.flag(TorFlag::SocksPort(19050))
-//.flag(TorFlag::HiddenServiceDir("hidden_services/1".into()))
-//.flag(TorFlag::HiddenServicePort(
-//TorAddress::Port(8000),
-//Some(TorAddress::AddressPort("127.0.0.1".into(), 5000))
-//.into(),
-//))
-//.flag(TorFlag::HiddenServiceVersion(HiddenServiceVersion::V3))
-//.flag(TorFlag::HiddenServiceDir("hidden_services/2".into()))
-//.flag(TorFlag::HiddenServicePort(TorAddress::Port(8001), None.into()))
-//.flag(TorFlag::HiddenServiceVersion(HiddenServiceVersion::V3))
-//.flag(TorFlag::HiddenServiceDir("hidden_services/3".into()))
-//.flag(TorFlag::HiddenServicePort(TorAddress::Port(8002), None.into()))
-//.flag(TorFlag::HiddenServiceVersion(HiddenServiceVersion::V3))
-//.start() {
-//Ok(v) => println!("started tor"),
-//Err(e) => println!("failed to start tor"),
-//}
-//}
-
 #[cfg(test)]
 mod test {
+    use crate::tor::TorInstance;
+
     use super::StormController;
     use bramble_crypto::KeyPair;
+    use futures::{executor::block_on, AsyncReadExt, AsyncWriteExt};
     use rand::{thread_rng, Rng};
+    use tokio::join;
 
     fn key() -> KeyPair {
         KeyPair::generate(&mut thread_rng())
@@ -289,13 +92,45 @@ mod test {
     #[tokio::test]
     #[ignore]
     async fn create_controller() {
-        StormController::new(key());
+        let tor = TorInstance::new_ref(vec![]);
+        StormController::new(tor, key());
     }
 
     #[tokio::test]
     #[ignore]
     async fn controller_create_tor_socket() {
-        let mut cont = StormController::new(key());
+        let tor = TorInstance::new_ref(vec![]);
+        let mut cont = StormController::new(tor, key());
         cont.create_connection(*key().public()).await;
+    }
+
+    #[tokio::test]
+    //#[ignore]
+    async fn perform_rendezvous() {
+        let key1 = key();
+        let key2 = key();
+        let tor = TorInstance::new_ref(vec![]);
+        let mut cont1 = StormController::new(tor.clone(), key1);
+        let mut cont2 = StormController::new(tor, key2);
+        let (mut sock1, mut sock2) = join!(
+            cont2.create_connection(*key1.public()),
+            cont1.create_connection(*key2.public())
+        );
+        let wf1 = sock1.write_all(b"Sock1Hello");
+        let mut buf1 = [0u8; 50];
+        let rf1 = sock2.read(&mut buf1);
+        let (_, n1) = join!(wf1, rf1);
+        let res = std::str::from_utf8(&buf1[0..n1.unwrap()]).unwrap();
+        eprintln!("{}", &res);
+        assert_eq!("Sock1Hello".to_string(), res);
+
+        //let wf2 = sock2.write_all(b"Sock2Greetings");
+        //let mut buf2 = [0u8; 50];
+        //let rf2 = sock1.read(&mut buf2);
+        //let (_, n2) = join!(wf2, rf2);
+        //assert_eq!(
+        //"Sock2Greetings".to_string(),
+        //std::str::from_utf8(&buf2[0..n2.unwrap()]).unwrap()
+        //);
     }
 }

@@ -1,3 +1,4 @@
+use async_compat::Compat;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use futures::select;
 use futures::{AsyncRead as StdAsyncRead, AsyncWrite as StdAsyncWrite};
@@ -9,11 +10,12 @@ use std::future::Future;
 use std::io::{Read, Write};
 use std::ops::DerefMut;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::*;
 use std::task::{Poll, Waker};
 use std::thread;
 use std::thread::JoinHandle;
-use tokio::io::AsyncWrite as TokioAsyncWrite;
+use tokio::io::{AsyncRead, AsyncWrite as TokioAsyncWrite};
 use tokio::net::TcpStream;
 
 // Readings:
@@ -21,7 +23,8 @@ use tokio::net::TcpStream;
 // https://manpages.debian.org/stretch/tor/torrc.5.en.html
 // https://www.linuxjournal.com/content/tor-hidden-services
 // https://docs.rs/async-socks5/latest/async_socks5/
-//
+// https://comit.network/blog/2020/07/02/tor-poc/
+// https://github.com/tcharding/simple-tor-tc/blob/master/src/main.rs
 
 pub const CONTROL_PORT: u16 = 9151;
 pub const SERVICE_PORT: u16 = 9150;
@@ -169,6 +172,10 @@ impl TorInstance {
         }
     }
 
+    pub fn new_ref(services: Vec<u16>) -> Rc<Mutex<Self>> {
+        Rc::new(Mutex::new(Self::new(services)))
+    }
+
     pub fn started(&mut self) -> TorStarting {
         TorStarting { instance: self }
     }
@@ -221,12 +228,14 @@ impl<'t> Future for TorStarting<'t> {
 }
 
 pub struct TorSocket {
-    inner: tokio::net::TcpStream,
+    inner: Compat<tokio::net::TcpStream>,
 }
 
 impl From<TcpStream> for TorSocket {
     fn from(sock: TcpStream) -> Self {
-        Self { inner: sock }
+        Self {
+            inner: Compat::new(sock),
+        }
     }
 }
 
@@ -250,17 +259,18 @@ impl StdAsyncWrite for TorSocket {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        Pin::new(&mut self.inner).poll_shutdown(cx)
+        Pin::new(&mut self.inner).poll_close(cx)
     }
 }
 
 impl StdAsyncRead for TorSocket {
     fn poll_read(
-        self: std::pin::Pin<&mut Self>,
+        mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        todo!()
+        //Pin::new(&mut self.inner).poll_read(cx, &mut tokio::io::ReadBuf::new(buf))
+        Pin::new(&mut self.inner).poll_read(cx, buf)
     }
 }
 
