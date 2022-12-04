@@ -1,4 +1,5 @@
 use async_compat::Compat;
+use bramble_common::transport::Id;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use futures::select;
 use futures::{AsyncRead as StdAsyncRead, AsyncWrite as StdAsyncWrite};
@@ -237,6 +238,13 @@ impl From<TcpStream> for TorSocket {
             inner: Compat::new(sock),
         }
     }
+}
+const BRP_ID: &[u8] = b"org.briarproject.bramble.tor";
+impl Id for TorSocket {
+    const ID: &'static [u8] = BRP_ID;
+}
+impl bramble_common::transport::Latency for TorSocket {
+    const MAX_LATENCY_SECONDS: u32 = 60;
 }
 
 impl StdAsyncWrite for TorSocket {

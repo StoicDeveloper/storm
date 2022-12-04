@@ -9,6 +9,7 @@ edition = "2021"
 bramble-rendezvous = { path = '../../bramble-rs/bramble-rendezvous' }
 bramble-common = { path = '../../bramble-rs/bramble-common' }
 bramble-crypto = { path = '../../bramble-rs/bramble-crypto' }
+bramble-transport = { path = '../../bramble-rs/bramble-transport' }
 rand = "0.8.5"
 portpicker = "0.1.1"
 slice_as_array = "1.1.0"

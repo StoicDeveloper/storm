@@ -174,6 +174,10 @@ impl Rendezvous for StormRendezvous {
     }
 }
 
+impl bramble_common::transport::Latency for StormRendezvous {
+    const MAX_LATENCY_SECONDS: u32 = 60;
+}
+
 async fn async_listen(listener: TcpListener) -> Result<TorSocket> {
     Ok(listener.accept().await.unwrap().0.into())
 }
