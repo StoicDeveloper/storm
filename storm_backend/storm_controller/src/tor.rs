@@ -1,12 +1,15 @@
 use async_compat::Compat;
 use bramble_common::transport::Id;
+use futures::executor::block_on;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
-use futures::select;
+use futures::{ready, select};
 use futures::{AsyncRead as StdAsyncRead, AsyncWrite as StdAsyncWrite};
 use gag::BufferRedirect;
-use libtor::*;
+use libtor::{HiddenServiceVersion, Tor, TorAddress, TorFlag};
+use log::{debug, error, info, trace, warn};
 use portpicker::pick_unused_port;
 use std::collections::VecDeque;
+use std::fmt::Debug;
 use std::future::Future;
 use std::io::{Read, Write};
 use std::ops::DerefMut;
@@ -81,11 +84,11 @@ impl TorInstance {
         self.control_port
     }
     pub async fn get_control_socket(&self) -> TcpStream {
-        eprintln!("{}", self.control_port);
+        println!("{}", self.control_port);
         // For some reason making the tokio stream directly would wait forever
         let tcp = std::net::TcpStream::connect(("127.0.0.1", self.control_port)).unwrap();
         tcp.set_nonblocking(true).unwrap();
-        eprintln!("made socket");
+        println!("made socket");
         TcpStream::from_std(tcp).unwrap()
         //TcpStream::connect(("127.0.0.1", self.control_port))
         //.await
@@ -125,8 +128,8 @@ impl TorInstance {
             }
             tor.start_background();
             let mut output = String::new();
-            //eprintln!("hello world");
-            loop {
+            //println!("hello world");
+            'capture_stdout: loop {
                 let res = buf.read_to_string(&mut output);
                 match res {
                     Ok(0) => {
@@ -138,30 +141,32 @@ impl TorInstance {
                         break;
                     }
                     Ok(n) => {
-                        //eprintln!("read {} bytes", n);
+                        //println!("read {} bytes", n);
                     }
                 }
                 let mut out = output_queue.lock().unwrap();
                 for line in output.lines() {
                     eprintln!("{}", line);
                     (*out).output.push_back(TorOutput::process_output(line));
+                    if line.contains("Bootstrapped 100% (done): Done") {
+                        buf.into_inner();
+                        break 'capture_stdout;
+                    }
                 }
                 if let Some(waker) = (*out).waker.take() {
-                    //eprintln!("waking in loop");
+                    //println!("waking in loop");
                     waker.wake();
                 }
                 output.clear();
             }
-            eprintln!("loop ended");
             let mut out = output_queue.lock().unwrap();
             if let Some(waker) = (*out).waker.take() {
-                eprintln!("waking out of loop");
                 waker.wake();
             }
             (*out).output.push_back(TorOutput::Exited);
         });
 
-        Self {
+        let mut tor = Self {
             tor_monitor,
             output,
             control_socket: None,
@@ -170,7 +175,9 @@ impl TorInstance {
             started: false,
             finished: false,
             error: false,
-        }
+        };
+        block_on(tor.started());
+        tor
     }
 
     pub fn new_ref(services: Vec<u16>) -> Rc<Mutex<Self>> {
@@ -195,7 +202,7 @@ impl TorInstance {
             };
 
             if !is_variant!(change, TorOutput::NoChange) {
-                eprintln!("{:?}", change);
+                trace!(target: "tor_output", "{:?}", change);
             }
         }
     }
@@ -215,13 +222,13 @@ impl<'t> Future for TorStarting<'t> {
         self.instance.process_output();
         let mut state = self.instance.output.lock().unwrap();
         //println!("poll");
-        //eprintln!("poll");
+        //println!("poll");
         if self.instance.started {
-            //eprintln!("ready");
+            //println!("ready");
             Poll::Ready(())
         } else {
             // May need an array of wakers
-            //eprintln!("pending");
+            //println!("pending");
             state.waker = Some(cx.waker().clone());
             Poll::Pending
         }
@@ -230,6 +237,14 @@ impl<'t> Future for TorStarting<'t> {
 
 pub struct TorSocket {
     inner: Compat<tokio::net::TcpStream>,
+}
+
+impl Debug for TorSocket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TorSocket")
+            .field("addr", &self.inner.get_ref().local_addr())
+            .finish()
+    }
 }
 
 impl From<TcpStream> for TorSocket {
@@ -244,7 +259,7 @@ impl Id for TorSocket {
     const ID: &'static [u8] = BRP_ID;
 }
 impl bramble_common::transport::Latency for TorSocket {
-    const MAX_LATENCY_SECONDS: u32 = 60;
+    const MAX_LATENCY_SECONDS: u32 = 1;
 }
 
 impl StdAsyncWrite for TorSocket {
@@ -253,7 +268,11 @@ impl StdAsyncWrite for TorSocket {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
+        let res = ready!(Pin::new(&mut self.inner).poll_write(cx, buf));
+        if let Ok(num) = res {
+            trace!(target: "TorSocket", "Wrote {} bytes", num);
+        }
+        Poll::Ready(res)
     }
 
     fn poll_flush(
@@ -278,7 +297,12 @@ impl StdAsyncRead for TorSocket {
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         //Pin::new(&mut self.inner).poll_read(cx, &mut tokio::io::ReadBuf::new(buf))
-        Pin::new(&mut self.inner).poll_read(cx, buf)
+        debug!(target: "TorSocket","polling read");
+        let res = ready!(Pin::new(&mut self.inner).poll_read(cx, buf));
+        if let Ok(num) = res {
+            trace!(target: "TorSocket", "Wrote {} bytes", num);
+        }
+        Poll::Ready(res)
     }
 }
 
@@ -295,14 +319,14 @@ impl TorControl {
         control
     }
     fn send(&mut self, command: &[u8]) {
-        eprintln!("{}", std::str::from_utf8(command).unwrap().to_string());
+        trace!(target: "controller", "Command {}", std::str::from_utf8(command).unwrap().to_string());
         self.inner.write_all(command).unwrap();
     }
     fn reply(&mut self) -> String {
         let mut buf = [0u8; 200];
         let n = self.inner.read(&mut buf).unwrap();
         let reply = std::str::from_utf8(&buf[0..n]).unwrap().to_string();
-        eprintln!("{}", &reply);
+        trace!(target: "controller", "Reply {}", std::str::from_utf8(&buf[0..n]).unwrap().to_string());
         reply
     }
     fn auth(&mut self) -> bool {
@@ -325,6 +349,14 @@ impl TorControl {
         assert!(self.reply().contains("250 OK"));
         Ok(())
     }
+    pub fn get_conf(&mut self, field: &str) -> String {
+        let mut res = String::new();
+        res.push_str("GETCONF ");
+        res.push_str(field);
+        res.push_str(" \r\n");
+        self.send(res.as_bytes());
+        self.reply()
+    }
 }
 
 #[cfg(test)]
@@ -337,12 +369,15 @@ mod test {
     use libtor::*;
     use std::io::Read;
     use std::net::SocketAddr;
+    use std::sync::mpsc;
+    use std::thread::{self, JoinHandle};
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    use std::sync::mpsc;
-    use std::thread::{self, JoinHandle};
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
 
     fn create_tor_foreground() {
         match Tor::new()
@@ -400,31 +435,16 @@ mod test {
         let mut buf = [0; 4];
         client.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, b"blag");
-        //eprintln!("created stream");
+        //println!("created stream");
         //let mut stream = BufStream::new(stream);
         //let listener = SocksListener::bind(
         //let req = connect(&mut stream, (&onion_url, 8004), None);
     }
 
     #[test]
-    #[ignore]
+    //#[ignore]
     fn create_connection() {
-        //use libtor::{HiddenServiceVersion, Tor, TorAddress, TorFlag};
-        let mut tor = TorInstance::new(vec![8004]);
-        block_on(async {
-            select!(
-            _ = tor.started().fuse() => {},
-            _ = Delay::new(Duration::from_secs(30)).fuse() => panic!(),
-            )
-        });
-
-        //block_on(create_tor_socket());
-
-        // connect to hidden service
-        // listen for socks connection on hidden service port
-        // send socks connect request over socksport
-        // see what happens
-        // print off if conn successful
+        let tor = TorInstance::new(vec![8004]);
     }
 
     use std::net::{Ipv4Addr, SocketAddrV4};
@@ -451,11 +471,11 @@ mod test {
                 .to_string(),
             8004,
         );
-        eprintln!("{:?}", target_addr);
+        println!("{:?}", target_addr);
         //block_on(Delay::new(Duration::from_secs(120)));
         //Socks5Listener::bind(proxy_addr, target_addr).await.unwrap();
         let server_listener = TcpListener::bind("127.0.0.1:8004").await.unwrap();
-        eprintln!("listener");
+        println!("listener");
         let client_request = Socks5Stream::connect(proxy_addr, target_addr);
         let (mut client_sock, (mut server_sock, server_addr)) = tokio::select!(
             (client_stream, server_sock) = async {
@@ -463,21 +483,21 @@ mod test {
             } =>
             {(client_stream.unwrap().into_inner(), server_sock.unwrap())},
             _ = Delay::new(Duration::from_secs(300)).fuse() => {
-                eprintln!("timeout");
+                println!("timeout");
                 panic!();
             }
         );
         client_sock.write_all(b"sending client msg").await.unwrap();
         let mut buf = [0u8; 50];
         let n = server_sock.read(&mut buf).await.unwrap();
-        eprintln!(
+        println!(
             "server received {}",
             std::str::from_utf8(&buf[0..n]).unwrap()
         );
         server_sock.write_all(b"sending server msg").await.unwrap();
         let mut buf = [0u8; 50];
         let n = client_sock.read(&mut buf).await.unwrap();
-        eprintln!(
+        println!(
             "client received {}",
             std::str::from_utf8(&buf[0..n]).unwrap()
         );

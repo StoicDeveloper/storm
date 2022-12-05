@@ -1,4 +1,6 @@
 storm_platform
+bramble-rs/**
+bramble-rs
 storm_frontend/*/
 !storm_frontend/rust
 storm_frontend/rust/src/bridge.rs

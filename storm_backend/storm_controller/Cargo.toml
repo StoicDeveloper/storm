@@ -10,6 +10,8 @@ bramble-rendezvous = { path = '../../bramble-rs/bramble-rendezvous' }
 bramble-common = { path = '../../bramble-rs/bramble-common' }
 bramble-crypto = { path = '../../bramble-rs/bramble-crypto' }
 bramble-transport = { path = '../../bramble-rs/bramble-transport' }
+log = "0.4.17"
+env_logger = "0.9.3"
 rand = "0.8.5"
 portpicker = "0.1.1"
 slice_as_array = "1.1.0"
