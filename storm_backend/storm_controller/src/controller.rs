@@ -1,9 +1,11 @@
 //use libtor::{Tor, TorFlag, TorAddress, HiddenServiceVersion};
 use crate::rendezvous::*;
+use bramble_common::transport::{Id, Latency};
 use bramble_crypto::{KeyPair, PublicKey, Role, SecretKey};
 use bramble_rendezvous::Rendezvous;
 use bramble_transport::*;
 use futures::executor::block_on;
+use futures::{AsyncRead, AsyncWrite};
 use futures_timer::Delay;
 //use bramble_sync::SyncProtocol;
 //use bramble_transport::Connection;
@@ -65,18 +67,6 @@ impl StormController {
         cont
     }
 
-    pub async fn create_rendezvous(&mut self, peer: PublicKey) -> TorSocket {
-        let (rendezvous_conn, _, _) = bramble_rendezvous::perform_rendezvous(
-            StormRendezvous::new(&self.name, self.tor_controller.clone()),
-            self.key,
-            peer,
-        )
-        .await
-        .unwrap();
-        //self.mk_auth_tor_conn().await;
-        rendezvous_conn
-    }
-
     pub fn create_transport(&mut self, rdvs: TorSocket, peer: PublicKey) -> Connection<TorSocket> {
         println!("create_transport");
         let root_key = bramble_crypto::kex(ROOT_KEY_LABEL, self.key.secret(), &peer, &[]);
@@ -97,7 +87,30 @@ impl StormController {
         println!("done create_transport");
         conn
     }
+
+    //pub async fn create_storm_socket(&mut self, peer: PublicKey) -> TorSocket {
+    //self.create_rendezvous(peer).await
+    //}
 }
+
+pub async fn create_rendezvous(
+    name: String,
+    tor_controller: Rc<Mutex<TorControl>>,
+    key: KeyPair,
+    peer: PublicKey,
+) -> TorSocket {
+    let (rendezvous_conn, _, _) = bramble_rendezvous::perform_rendezvous(
+        StormRendezvous::new(&name, tor_controller),
+        key,
+        peer,
+    )
+    .await
+    .unwrap();
+    //self.mk_auth_tor_conn().await;
+    rendezvous_conn
+}
+//trait StormConnection: AsyncRead + AsyncWrite + Id + Latency + 'static {}
+//impl StormConnection for TorSocket {}
 
 fn get_role(us: &PublicKey, them: &PublicKey) -> Role {
     match us.as_ref() < them.as_ref() {
@@ -140,7 +153,13 @@ mod test {
         init();
         let tor = TorInstance::new_ref(vec![]);
         let mut cont = StormController::new("Alice", tor, key());
-        cont.create_rendezvous(*key().public()).await;
+        create_rendezvous(
+            cont.name.clone(),
+            cont.tor_controller.clone(),
+            cont.key.clone(),
+            *key().public(),
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -153,29 +172,20 @@ mod test {
         let mut cont1 = StormController::new("Alice", tor.clone(), key1);
         let mut cont2 = StormController::new("Bob", tor, key2);
         let (mut sock1, mut sock2) = join!(
-            cont2.create_rendezvous(*key1.public()),
-            cont1.create_rendezvous(*key2.public())
-        );
-        let wf1 = sock1.write_all(b"Sock1Hello");
-        let mut buf1 = [0u8; 50];
-        let rf1 = sock2.read(&mut buf1);
-        let (_, n1) = join!(wf1, rf1);
-        let res = std::str::from_utf8(&buf1[0..n1.unwrap()]).unwrap();
-        println!("{}", &res);
-        assert_eq!("Sock1Hello".to_string(), res);
-    }
-    #[tokio::test]
-    //#[ignore]
-    async fn perform_rendezvous2() {
-        init();
-        let key1 = key();
-        let key2 = key();
-        let tor = TorInstance::new_ref(vec![]);
-        let mut cont1 = StormController::new("Alice", tor.clone(), key1);
-        let mut cont2 = StormController::new("Bob", tor, key2);
-        let (mut sock1, mut sock2) = join!(
-            cont1.create_rendezvous(*key2.public()),
-            cont2.create_rendezvous(*key1.public())
+            //cont2.create_rendezvous(*key1.public()),
+            create_rendezvous(
+                cont2.name.clone(),
+                cont2.tor_controller.clone(),
+                cont2.key.clone(),
+                *key1.public()
+            ),
+            //cont1.create_rendezvous(*key2.public())
+            create_rendezvous(
+                cont1.name.clone(),
+                cont1.tor_controller.clone(),
+                cont1.key.clone(),
+                *key2.public()
+            )
         );
         let wf1 = sock1.write_all(b"Sock1Hello");
         let mut buf1 = [0u8; 50];
@@ -195,11 +205,22 @@ mod test {
         let tor = TorInstance::new_ref(vec![]);
         let mut cont1 = StormController::new("Alice", tor.clone(), key1);
         let mut cont2 = StormController::new("Bob", tor, key2);
-        cont1.tor_controller.lock().unwrap().get_conf("SOCKSPort");
-        cont2.tor_controller.lock().unwrap().get_conf("SOCKSPort");
         let (sock1, sock2) = join!(
-            cont1.create_rendezvous(*key2.public()),
-            cont2.create_rendezvous(*key1.public())
+            //cont1.create_rendezvous(*key2.public()),
+            //cont2.create_rendezvous(*key1.public())
+            //cont1.create_rendezvous(*key2.public())
+            create_rendezvous(
+                cont1.name.clone(),
+                cont1.tor_controller.clone(),
+                cont1.key.clone(),
+                *key2.public()
+            ),
+            create_rendezvous(
+                cont2.name.clone(),
+                cont2.tor_controller.clone(),
+                cont2.key.clone(),
+                *key1.public()
+            )
         );
         //println!("now");
         //Delay::new(Duration::from_secs(5)).await;
@@ -223,33 +244,4 @@ mod test {
 
     use super::*;
     use bramble_common::make_duplex;
-
-    #[test]
-    fn writer_and_reader_work_together() {
-        init();
-        let rng = &mut thread_rng();
-        let root_key = SymmetricKey::generate(rng);
-        let (transport_a, transport_b) = make_duplex();
-        let mut stream_a = Connection::rotation(transport_a, root_key, Role::Alice, 17).unwrap();
-        let mut stream_b = Connection::rotation(transport_b, root_key, Role::Bob, 23).unwrap();
-
-        let fut_a = async {
-            use futures::io::AsyncWriteExt;
-            stream_a.write_all(b"the quick brown fox").await.unwrap();
-            stream_a.flush().await.unwrap();
-            stream_a
-                .write_all(b" jumps over the lazy dog")
-                .await
-                .unwrap();
-            stream_a.flush().await.unwrap();
-            stream_a.close().await.unwrap();
-        };
-        let mut res = vec![];
-        let fut_b = async {
-            use futures::io::AsyncReadExt;
-            stream_b.read(&mut res).await.unwrap();
-        };
-        block_on(async { join!(fut_a, fut_b) });
-        assert_eq!(res, b"the quick brown fox jumps over the lazy dog");
-    }
 }
