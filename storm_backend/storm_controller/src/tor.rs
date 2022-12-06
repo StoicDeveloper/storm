@@ -1,5 +1,6 @@
 use async_compat::Compat;
 use bramble_common::transport::Id;
+use bramble_crypto::PublicKey;
 use futures::executor::block_on;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use futures::{ready, select};
@@ -237,6 +238,16 @@ impl<'t> Future for TorStarting<'t> {
 
 pub struct TorSocket {
     inner: Compat<tokio::net::TcpStream>,
+    pub key: PublicKey,
+}
+
+impl TorSocket {
+    pub fn from_tcp(sock: TcpStream, peer: PublicKey) -> Self {
+        Self {
+            inner: Compat::new(sock),
+            key: peer,
+        }
+    }
 }
 
 impl Debug for TorSocket {
@@ -247,13 +258,6 @@ impl Debug for TorSocket {
     }
 }
 
-impl From<TcpStream> for TorSocket {
-    fn from(sock: TcpStream) -> Self {
-        Self {
-            inner: Compat::new(sock),
-        }
-    }
-}
 const BRP_ID: &[u8] = b"org.briarproject.bramble.tor";
 impl Id for TorSocket {
     const ID: &'static [u8] = BRP_ID;
@@ -297,7 +301,7 @@ impl StdAsyncRead for TorSocket {
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         //Pin::new(&mut self.inner).poll_read(cx, &mut tokio::io::ReadBuf::new(buf))
-        debug!(target: "TorSocket","polling read");
+        //debug!(target: "TorSocket","polling read");
         let res = ready!(Pin::new(&mut self.inner).poll_read(cx, buf));
         if let Ok(num) = res {
             trace!(target: "TorSocket", "Wrote {} bytes", num);
