@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 bramble-rendezvous = { path = '../../bramble-rs/bramble-rendezvous' }
 bramble-common = { path = '../../bramble-rs/bramble-common' }
+async-fuse = "0.11.2"
 bramble-crypto = { path = '../../bramble-rs/bramble-crypto' }
 bramble-transport = { path = '../../bramble-rs/bramble-transport' }
 bramble-sync = { path = '../../bramble-rs/bramble-sync' }

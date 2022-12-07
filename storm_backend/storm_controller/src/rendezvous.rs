@@ -11,13 +11,16 @@ use futures::future::LocalBoxFuture;
 use futures::future::Ready;
 use futures::Future;
 use futures::FutureExt;
+use futures_timer::Delay;
 use log::{debug, error, info, trace, warn};
 use portpicker::pick_unused_port;
 use slice_as_array::{slice_as_array, slice_as_array_transmute};
 use std::cell::OnceCell;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_socks::tcp::Socks5Stream;
@@ -45,14 +48,14 @@ fn do_nothing(event: AsyncEvent<'static>) -> Ready<Result<()>> {
 pub struct StormRendezvous {
     //control: AuthenticatedConn<TcpStream, AsyncEventCallback>,
     name: String,
-    control: Rc<Mutex<TorControl>>,
+    control: Arc<Mutex<TorControl>>,
     peer: PublicKey,
     peer_addr: OnceCell<OnionAddressV3>,
     listener: Option<LocalBoxFuture<'static, Result<TcpListener>>>,
 }
 
 impl StormRendezvous {
-    pub fn new(name: String, control: Rc<Mutex<TorControl>>, peer: PublicKey) -> Self
+    pub fn new(name: String, control: Arc<Mutex<TorControl>>, peer: PublicKey) -> Self
 //fn new(control: &mut AuthenticatedConn<TcpStream, F>)
     //where
     //F: Fn(AsyncEvent<'static>) -> Future<Output = Result<(), torut::control::ConnError>>,
@@ -187,22 +190,53 @@ impl bramble_common::transport::Latency for StormRendezvous {
     const MAX_LATENCY_SECONDS: u32 = 1;
 }
 
+use futures::select;
 async fn async_listen(
     name: String,
     listener: LocalBoxFuture<'static, Result<TcpListener>>,
     peer: PublicKey,
 ) -> Result<TorSocket> {
+    //let listener = listener.await?;
+    //let sock;
+    //let addr;
+    //loop {
+    //select!(
+
+    //res = listener.accept().fuse()
+    //=> {let (a, b) = res.unwrap(); sock = a; addr = b;break;},
+    //_ = Delay::new(Duration::from_secs(1)).fuse() => println!("{} listening", &name)
+    //);
+    //}
     let (sock, addr) = listener.await?.accept().await?;
     trace!(target: "network", "{} accepted connection at {}", name, addr);
     Ok(TorSocket::from_tcp(sock, peer))
 }
 
 async fn async_connect(name: String, addr: OnionAddressV3, peer: PublicKey) -> Result<TorSocket> {
-    let socks_stream = Socks5Stream::connect(
-        ("127.0.0.1", TOR_PROXY_PORT),
-        addr.get_address_without_dot_onion() + ".onion:1917",
-    )
-    .await?;
+    let socks_stream =
+        //log_future(
+        Socks5Stream::connect(
+            ("127.0.0.1", TOR_PROXY_PORT),
+            addr.get_address_without_dot_onion() + ".onion:1917",
+        )
+        //1,
+        //format!("{} connecting", &name).as_str(),
+    //)
+    .await
+    .unwrap();
+    //TODO: Handle failure, ex. host unreachable
+
     trace!(target: "network", "{} connected to proxy {:?}", name, &socks_stream);
     Ok(TorSocket::from_tcp(socks_stream.into_inner(), peer))
+}
+
+async fn log_future<F: Future>(fut: F, frequency: u64, msg: &str) -> F::Output {
+    let mut fut = Box::pin(fut.fuse());
+    loop {
+        select!(
+        res = fut
+        => return res,
+        _ = Delay::new(Duration::from_secs(frequency)).fuse() => println!("{}", msg)
+                );
+    }
 }

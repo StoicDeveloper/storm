@@ -78,6 +78,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-fuse"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3dcdcc1adb49c8f4f73cd5277c29dd7ca9635c66224589c0a9318973bde8f513"
+
+[[package]]
 name = "async-io"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,6 +229,7 @@ name = "bramble-common"
 version = "0.1.0"
 dependencies = [
  "async-io",
+ "bramble-crypto 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures",
  "pin-project",
  "rand 0.8.5",
@@ -1896,6 +1903,7 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "async-compat",
+ "async-fuse",
  "async-select-all",
  "async-socks5",
  "base64",
