@@ -222,8 +222,8 @@ async fn async_connect(name: String, addr: OnionAddressV3, peer: PublicKey) -> R
         //1,
         //format!("{} connecting", &name).as_str(),
     //)
-    .await
-    .unwrap();
+    .await?;
+
     //TODO: Handle failure, ex. host unreachable
 
     trace!(target: "network", "{} connected to proxy {:?}", name, &socks_stream);
