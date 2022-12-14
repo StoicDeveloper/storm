@@ -110,6 +110,7 @@ impl Profile {
             VALUES (?, ?, ?);",
             params![self.name, name, key.as_ref()],
         );
+        self.peers.insert(name.to_string(), key);
     }
 
     pub fn add_group(&mut self, group: &str) {
@@ -130,6 +131,7 @@ impl Profile {
             VALUES (?, ?, ?);",
             params![self.name, peer.as_ref(), group],
         );
+        self.peer_groups.insert(peer, group.to_string());
     }
     fn load_key(conn: &Connection, name: &str) -> KeyPair {
         let res: Result<[u8; KEY_LEN], rusqlite::Error> = conn.query_row(
