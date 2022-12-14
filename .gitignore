@@ -1,4 +1,5 @@
 storm_platform
+storm_backend/tests/*
 storm_frontend/*/
 !storm_frontend/rust
 storm_frontend/rust/src/bridge.rs
