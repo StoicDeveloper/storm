@@ -12,7 +12,8 @@ use rusqlite::{params, Connection};
 pub struct Profile {
     pub conn: Connection,
     pub key: KeyPair,
-    pub contacts: BisetMap<PublicKey, String>,
+    pub groups: BisetMap<PublicKey, String>,
+    pub peers: HashMap<String, PublicKey>,
 }
 
 impl Profile {
@@ -57,14 +58,36 @@ impl Profile {
 
         conn.execute(
             "
-        CREATE TABLE sharing_groups (
+        CREATE TABLE peers (
             key BLOB,
-            group_name TEXT,
-            PRIMARY KEY(key, group_name)
+            name TEXT,
+            PRIMARY KEY(name)
         );",
             (),
         )
         .unwrap();
+
+        conn.execute(
+            "
+        CREATE TABLE sharing_groups (
+            name TEXT,
+            group_name TEXT,
+            PRIMARY KEY(name, group_name),
+            FOREIGN KEY(name) REFERENCES peers(name) ON DELETE CASCADE
+        );",
+            (),
+        )
+        .unwrap();
+    }
+
+    fn add_peer(&mut self, name: &str, key: PublicKey) -> KeyPair {
+        let mut conn = &mut self.conn;
+        conn.execute(
+            "
+            INSERT INTO peers
+            VALUES (?, ?);",
+            params![name, key],
+        );
     }
 
     fn load_key(conn: &Connection, name: &str) -> KeyPair {

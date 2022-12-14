@@ -89,7 +89,7 @@ impl InitialCliState {
         let profile = Profile::load(name.to_string());
         println!("{}", &format!("Loaded profile for {}.", name));
         LoggedInCliState {
-            prompt: format!("Storm|{}|>>>"),
+            prompt: format!("Storm|{}|>>>", name),
             controller: StormController::new(
                 name,
                 &format!("./data/{}", name),
@@ -192,9 +192,14 @@ impl LoggedInCliState {
                                 }
                             }
                             AddContact(hex_str) => {
-                                let data = hex::decode(hex_str).unwrap();
+                                let res = hex::decode(hex_str);
+                                match res {
+                                    Ok(data) => {
                                 let peer = *slice_as_array!(&data, [u8;32]).unwrap();
                                 self.controller.connect_peer_slice(peer);
+                                    }
+                                    Err(_) => print!("Invalid key"),
+                                }
                             }
                         },
                         Err(e) => println!("{}", e),
