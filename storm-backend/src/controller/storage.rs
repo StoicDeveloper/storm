@@ -22,7 +22,7 @@ impl Profile {
     pub fn load(name: String) -> Profile {
         // create db conn
         // check if file exists, if not, initialize
-        let path = "./profiles.db";
+        let path = "./data/profiles.db";
         let exists = Path::new(path).exists();
         let conn = Connection::open(path).unwrap();
         if !exists {
@@ -197,7 +197,7 @@ impl Profile {
             .prepare(
                 "
             SELECT name, key
-            FROM profiles
+            FROM peers
             WHERE user = ?
             ;",
             )
