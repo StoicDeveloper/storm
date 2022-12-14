@@ -89,7 +89,7 @@ impl InitialCliState {
         let profile = Profile::load(name.to_string());
         println!("{}", &format!("Loaded profile for {}.", name));
         LoggedInCliState {
-            prompt: self.prompt,
+            prompt: format!("Storm|{}|>>>"),
             controller: StormController::new(
                 name,
                 &format!("./data/{}", name),
