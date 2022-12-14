@@ -108,12 +108,12 @@ impl InitialCliState {
             prompt: format!("Storm|{}|>>>", name),
             controller: StormController::new(
                 name,
-                &format!("./data/{}", name),
+                &format!("./data/{}.db", name),
                 self.tor,
                 profile.key,
             ),
             stdin: self.stdin,
-            stdout: self.stdout,
+            //stdout: self.stdout,
             curr_group: None,
             user: profile,
         }
@@ -151,7 +151,7 @@ struct LoggedInCliState {
     prompt: String,
     controller: StormController,
     stdin: tokio::io::BufReader<tokio::io::Stdin>,
-    stdout: tokio::io::Stdout,
+    //stdout: tokio::io::Stdout,
     curr_group: Option<String>,
     user: Profile,
 }
@@ -167,7 +167,7 @@ impl LoggedInCliState {
             select!(
                 output = self.controller.run_to_output().fuse() => {
                     self.display_output(output);
-                }
+                },
                 _ = self.stdin.read_line(&mut line).fuse() => {
                     match parse_cmd(&line) {
                         Ok(cmd) => match &cmd {
@@ -187,7 +187,13 @@ impl LoggedInCliState {
                             Exit => return (),
                             PrintKey => println!("{}",hex::encode(self.user.key.public())),
                             NewGroup(desc) => {
-                                self.controller.add_group(desc.to_string());
+                                match self.user.groups.contains(desc) {
+                                    true => print!("This group already exists"),
+                                    false => {
+                                        self.user.add_group(desc);
+                                        self.controller.add_group(desc.to_string());
+                                    }
+                                }
                             }
                             EnterGroup(desc) => {
                                 if self.user.groups.contains(desc) {
@@ -280,99 +286,8 @@ impl LoggedInCliState {
 }
 
 #[tokio::main]
-//async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn main() {
-    println!("hello world");
     if let Some(mut state) = InitialCliState::new().run_to_login().await {
         state.run().await;
     }
-
-    //let cli_state = CLIState::new();
-    //let mut shell = Shell::new_async(cli_state, "<[Shellfish Example]>-$ ");
-    // start tor, load profile, create controller
-    // setup commands, print some output
-    // setup controller, load contacts
-    //
-
-    //shell.commands.insert(
-    //"login",
-    //Command::new("Loads your profile.".to_string(), login),
-    //);
-
-    //shell
-    //.commands
-    //.insert("echo", Command::new("prints the input.".to_string(), echo));
-
-    //shell.commands.insert(
-    //"count",
-    //Command::new("increments a counter.".to_string(), count),
-    //);
-
-    //shell.commands.insert(
-    //"cat",
-    //Command::new_async(
-    //"Displays a plaintext file.".to_string(),
-    //async_fn!(u64, cat),
-    //)
-    //.await,
-    //);
-    //let mut args = std::env::args();
-    //if args.nth(1).is_some() {
-    //let mut app: app::App<u64, app::DefaultAsyncCLIHandler> = app::App::try_from_async(shell)?;
-    //let mut app = app::App::try_from_async(shell)?;
-    //app.handler.proj_name = Some("shellfish-example".to_string());
-    //app.load_cache()?;
-    //app.run_args_async().await?;
-    //} else {
-    //shell.run_async().await?;
-    //}
 }
-
-//async fn login(_state: &mut u64, args: Vec<String>) -> Result<(), Box<dyn Error>> {
-//let arg = args.get(1).ok_or_else(|| Box::new(GreetingError))?;
-//println!("Greetings {}, my good friend.", arg);
-//Ok(())
-//}
-
-//fn newgroup(_state: &mut u64, args: Vec<String>) -> Result<(), Box<dyn Error>> {
-//let _name = &args[0];
-
-//let mut args = args.iter();
-//args.next();
-//for arg in args {
-//println!("{} ", arg);
-//}
-//println!();
-//Ok(())
-//}
-
-//fn count(state: &mut u64, _args: Vec<String>) -> Result<(), Box<dyn Error>> {
-//state.add_assign(1);
-//println!("You have used this counter {} times", state);
-//Ok(())
-//}
-
-///// Asynchronously reads a file
-
-//async fn cat(_state: &mut u64, args: Vec<String>) -> Result<(), Box<dyn Error>> {
-//use async_std::fs;
-
-//if let Some(file) = args.get(1) {
-//let mut contents = String::new();
-//let mut file = fs::File::open(file).await?;
-//file.read_to_string(&mut contents).await?;
-//println!("{}", contents);
-//}
-
-//Ok(())
-//}
-//#[derive(Debug)]
-//pub struct GreetingError;
-
-//impl fmt::Display for GreetingError {
-//fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//write!(f, "No name specified")
-//}
-//}
-
-//impl Error for GreetingError {}

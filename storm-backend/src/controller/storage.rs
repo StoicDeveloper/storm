@@ -120,6 +120,7 @@ impl Profile {
             VALUES (?, ?);",
             params![self.name, group],
         );
+        self.groups.insert(group.to_string());
     }
     pub fn add_peer_to_group(&mut self, peer: PublicKey, group: &str) {
         let mut conn = &mut self.conn;
