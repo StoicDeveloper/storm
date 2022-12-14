@@ -37,6 +37,7 @@ enum Command {
     NewGroup(String),
     EnterGroup(String),
     ListGroups,
+    ListPeers,
     Send(String),
     AddContact(String, String),
     Share(String, String),
@@ -76,6 +77,7 @@ fn parse_cmd(line: &String) -> Result<Command, String> {
         }
         None => match line.as_str().trim() {
             "groups" => Ok(ListGroups),
+            "peers" => Ok(ListPeers),
             "key" => Ok(PrintKey),
             "exit" | "quit" => Ok(Exit),
             cmd => Err(format!("Invalid command: {}", cmd)),
@@ -227,6 +229,9 @@ impl LoggedInCliState {
                             }
                             ListGroups => {
                                 self.user.groups.iter().for_each(|group| println!("{}", group));
+                            }
+                            ListPeers => {
+                                self.user.peers.iter().for_each(|(name, key)| println!("{} - {}", name, key));
                             }
                             Send(msg) => {
                                 match &self.curr_group {

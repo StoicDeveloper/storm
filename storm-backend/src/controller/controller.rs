@@ -181,7 +181,6 @@ impl StormController {
     pub async fn run_to_output(&mut self) -> ControllerOutput {
         loop {
             //trace!(target: "controller", "running controller loop");
-            println!("running cont");
             select!(
                 (peer, res) = self.connector.next_connection() => {
                     println!("conn made");
