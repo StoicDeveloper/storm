@@ -459,7 +459,7 @@ pub fn get_role(us: &PublicKey, them: &PublicKey) -> Role {
     }
 }
 
-fn get_group(name: &str) -> Group {
+pub fn get_group(name: &str) -> Group {
     SimpleClient::group_from_name(name)
 }
 

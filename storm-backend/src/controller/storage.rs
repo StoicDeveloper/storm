@@ -11,8 +11,10 @@ use rusqlite::{params, Connection};
 
 pub struct Profile {
     pub conn: Connection,
+    pub name: String,
     pub key: KeyPair,
-    pub groups: BisetMap<PublicKey, String>,
+    pub groups: HashSet<String>,
+    pub peer_groups: BisetMap<PublicKey, String>,
     pub peers: HashMap<String, PublicKey>,
 }
 
@@ -27,11 +29,16 @@ impl Profile {
             Self::init(&conn);
         }
         let key = Self::load_key(&conn, &name);
-        let contacts = Self::load_contact_groups(&conn, &name);
+        let groups = Self::load_groups(&conn, &name);
+        let peer_groups = Self::load_contact_groups(&conn, &name);
+        let peers = Self::load_peers(&conn, &name);
         Self {
             conn,
+            name,
             key,
-            contacts,
+            groups,
+            peer_groups,
+            peers,
         }
     }
 
@@ -59,9 +66,23 @@ impl Profile {
         conn.execute(
             "
         CREATE TABLE peers (
+            user TEXT,
+            name TEXT UNIQUE,
             key BLOB,
+            PRIMARY KEY(user, key),
+            FOREIGN KEY(user) REFERENCES profiles(name) ON DELETE CASCADE
+        );",
+            (),
+        )
+        .unwrap();
+
+        conn.execute(
+            "
+        CREATE TABLE msg_groups (
+            user TEXT,
             name TEXT,
-            PRIMARY KEY(name)
+            PRIMARY KEY(user, name),
+            FOREIGN KEY(user) REFERENCES profiles(name) ON DELETE CASCADE
         );",
             (),
         )
@@ -70,26 +91,45 @@ impl Profile {
         conn.execute(
             "
         CREATE TABLE sharing_groups (
-            name TEXT,
+            user TEXT,
+            peer BLOB,
             group_name TEXT,
-            PRIMARY KEY(name, group_name),
-            FOREIGN KEY(name) REFERENCES peers(name) ON DELETE CASCADE
+            PRIMARY KEY(user, peer, group_name),
+            FOREIGN KEY(user, peer) REFERENCES peers(user, key) ON DELETE CASCADE
         );",
             (),
         )
         .unwrap();
     }
 
-    fn add_peer(&mut self, name: &str, key: PublicKey) -> KeyPair {
+    pub fn add_peer(&mut self, name: &str, key: PublicKey) {
         let mut conn = &mut self.conn;
         conn.execute(
             "
             INSERT INTO peers
-            VALUES (?, ?);",
-            params![name, key],
+            VALUES (?, ?, ?);",
+            params![self.name, name, key.as_ref()],
         );
     }
 
+    pub fn add_group(&mut self, group: &str) {
+        let mut conn = &mut self.conn;
+        conn.execute(
+            "
+            INSERT INTO msg_groups
+            VALUES (?, ?);",
+            params![self.name, group],
+        );
+    }
+    pub fn add_peer_to_group(&mut self, peer: PublicKey, group: &str) {
+        let mut conn = &mut self.conn;
+        conn.execute(
+            "
+            INSERT INTO sharing_groups
+            VALUES (?, ?, ?);",
+            params![self.name, peer.as_ref(), group],
+        );
+    }
     fn load_key(conn: &Connection, name: &str) -> KeyPair {
         let res: Result<[u8; KEY_LEN], rusqlite::Error> = conn.query_row(
             "
@@ -118,8 +158,8 @@ impl Profile {
         let mut stmt = conn
             .prepare(
                 "
-            SELECT * FROM sharing_groups 
-            WHERE group_name = ?
+            SELECT peer, group_name FROM sharing_groups 
+            WHERE user = ?
             ;",
             )
             .unwrap();
@@ -142,14 +182,49 @@ impl Profile {
         map
     }
 
-    pub fn groups(&self) -> Vec<String> {
-        self.contacts
-            .flat_collect()
-            .into_iter()
-            .map(|(_, group)| group)
-            .collect::<HashSet<String>>()
-            .into_iter()
+    //pub fn group_list(&self) -> Vec<String> {
+    //self.groups
+    //.flat_collect()
+    //.into_iter()
+    //.map(|(_, group)| group)
+    //.collect::<HashSet<String>>()
+    //.into_iter()
+    //.collect()
+    //}
+
+    fn load_peers(conn: &Connection, name: &str) -> HashMap<String, PublicKey> {
+        let mut stmt = conn
+            .prepare(
+                "
+            SELECT name, key
+            FROM profiles
+            WHERE user = ?
+            ;",
+            )
+            .unwrap();
+        let peers: Vec<(String, PublicKey)> = stmt
+            .query([name])
+            .unwrap()
+            .map(|row| Ok((row.get_unwrap(0), row.get_unwrap(1))))
             .collect()
+            .unwrap();
+        peers.into_iter().collect()
+    }
+    pub fn load_groups(conn: &Connection, name: &str) -> HashSet<String> {
+        let mut stmt = conn
+            .prepare(
+                "
+            SELECT name
+            FROM msg_groups
+            WHERE user = ?
+            ;",
+            )
+            .unwrap();
+        stmt.query([name])
+            .unwrap()
+            .map(|row| Ok(row.get_unwrap(0)))
+            .collect()
+            .unwrap()
     }
 }
 

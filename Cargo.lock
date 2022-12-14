@@ -2139,6 +2139,7 @@ dependencies = [
 name = "storm-cli"
 version = "0.1.0"
 dependencies = [
+ "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
  "futures",
  "hex",
  "shellfish",

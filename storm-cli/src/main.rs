@@ -12,6 +12,7 @@
 //use std::io::prelude::*;
 use slice_as_array::{slice_as_array, slice_as_array_transmute};
 //use std::ops::AddAssign;
+//use bramble_crypto::PublicKey;
 use std::sync::Mutex;
 use std::{io::Write, rc::Rc};
 //use std::pin::Pin;
@@ -23,6 +24,7 @@ extern crate tokio;
 use futures::select;
 use futures::FutureExt;
 //use std::io;
+use storm_backend::controller::controller::get_group;
 use storm_backend::controller::controller::ControllerOutput;
 #[allow(unused_imports)]
 use storm_backend::controller::controller::StormController;
@@ -36,7 +38,8 @@ enum Command {
     EnterGroup(String),
     ListGroups,
     Send(String),
-    AddContact(String),
+    AddContact(String, String),
+    Share(String, String),
     Login(String),
     PrintKey,
     Exit,
@@ -54,7 +57,20 @@ fn parse_cmd(line: &String) -> Result<Command, String> {
                 "entergroup" => Ok(EnterGroup(arg)),
                 "send" => Ok(Send(arg)),
                 "login" => Ok(Login(arg)),
-                "add" => Ok(AddContact(arg)),
+                "add" => {
+                    let res = arg.split_once(" ");
+                    match res {
+                        Some((name, key)) => Ok(AddContact(name.to_string(), key.to_string())),
+                        None => Err("Must specify name and key".to_string()),
+                    }
+                }
+                "share" => {
+                    let res = arg.split_once(" ");
+                    match res {
+                        Some((group, name)) => Ok(Share(group.to_string(), name.to_string())),
+                        None => Err("Must provide group name and peer name".to_string()),
+                    }
+                }
                 _ => Err("Command not recognized".to_string()),
             }
         }
@@ -174,14 +190,37 @@ impl LoggedInCliState {
                                 self.controller.add_group(desc.to_string());
                             }
                             EnterGroup(desc) => {
-                                if self.user.contacts.value_exists(&desc) {
+                                if self.user.groups.contains(desc) {
                                     self.curr_group = Some(desc.clone());
                                 } else {
                                     println!("You are not in group {}.", desc);
                                 }
                             }
+                            Share(group, peer) => {
+                                // do you have the peer as a contact?
+                                // are you in the group?
+                                // are you not already sharing the group with that peer?
+                                //
+                                let has_group = self.user.groups.contains(group);
+                                let has_contact = self.user.peers.contains_key(peer);
+                                match (has_group, has_contact) {
+                                    (false, _) => print!("You do not have this group."),
+                                    (_, false) => print!("You do not have this contact."),
+                                    (true, true) => {
+                                        let key = *self.user.peers.get(peer).unwrap();
+                                        let already_sharing = self.user.peer_groups.contains(&key, group);
+                                        match already_sharing {
+                                            true => print!("You are already sharing this group with this contact."),
+                                            false => {
+                                                self.user.add_peer_to_group(key, &group);
+                                                self.controller.add_peer_to_group(&key, &get_group(group).id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             ListGroups => {
-                                self.user.groups().iter().for_each(|group| println!("{}", group));
+                                self.user.groups.iter().for_each(|group| println!("{}", group));
                             }
                             Send(msg) => {
                                 match &self.curr_group {
@@ -191,12 +230,19 @@ impl LoggedInCliState {
                                     None => println!("You must enter a group before you can send messages"),
                                 }
                             }
-                            AddContact(hex_str) => {
+                            AddContact(name, hex_str) => {
                                 let res = hex::decode(hex_str);
                                 match res {
                                     Ok(data) => {
-                                let peer = *slice_as_array!(&data, [u8;32]).unwrap();
-                                self.controller.connect_peer_slice(peer);
+                                        let peer_opt = slice_as_array!(&data, [u8;32]);
+                                        match peer_opt {
+                                            Some(peer) => {
+                                                self.controller.connect_peer_slice(*peer);
+                                                self.user.add_peer(&name, (*peer).into());
+                                            }
+                                        None =>
+                                            print!("Incorrect key length"),
+                                        }
                                     }
                                     Err(_) => print!("Invalid key"),
                                 }
