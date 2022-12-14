@@ -283,6 +283,24 @@ impl StormController {
         // load the groups we are sharing with each contact.
     }
 
+    pub fn connect_peer_with_group(&mut self, peer: &PublicKey) -> String {
+        let (mut alice, mut bob);
+        match get_role(self.key.public(), peer) {
+            Role::Alice => {
+                alice = self.key.public();
+                bob = peer;
+            }
+            Role::Bob => {
+                bob = self.key.public();
+                alice = peer;
+            }
+        }
+        let group_name = format!("DM-{}-{}", alice, bob);
+        self.connect_peer(*peer);
+        //self.add_group(&group_name);
+        group_name
+    }
+
     //pub async fn create_storm_socket(&mut self, peer: PublicKey) -> TorSocket {
     //self.create_rendezvous(peer).await
     //}
@@ -430,7 +448,7 @@ fn create_rendezvous(
     )
 }
 
-fn get_role(us: &PublicKey, them: &PublicKey) -> Role {
+pub fn get_role(us: &PublicKey, them: &PublicKey) -> Role {
     match us.as_ref() < them.as_ref() {
         true => Role::Alice,
         false => Role::Bob,
@@ -565,8 +583,6 @@ mod test {
             cont1.create_rendezvous(*key2.public()),
             cont2.create_rendezvous(*key1.public())
         );
-        //println!("now");
-        //Delay::new(Duration::from_secs(5)).await;
         let mut sock1 = cont1.create_transport(sock1, *key2.public());
         let mut sock2 = cont2.create_transport(sock2, *key1.public());
 
