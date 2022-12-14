@@ -106,7 +106,7 @@ impl InitialCliState {
     fn login(self, name: &str) -> LoggedInCliState {
         let profile = Profile::load(name.to_string());
         println!("{}", &format!("Loaded profile for {}.", name));
-        LoggedInCliState {
+        let mut state = LoggedInCliState {
             prompt: format!("Storm|{}|>>>", name),
             controller: StormController::new(
                 name,
@@ -118,7 +118,11 @@ impl InitialCliState {
             //stdout: self.stdout,
             curr_group: None,
             user: profile,
-        }
+        };
+        state.user.peers.iter().for_each(|(_, key)| {
+            state.controller.connect_peer(*key);
+        });
+        state
     }
 
     async fn run_to_login(mut self) -> Option<LoggedInCliState> {
