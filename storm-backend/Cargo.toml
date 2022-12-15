@@ -6,11 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bramble-sync = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
-bramble-rendezvous = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
-bramble-common = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
-bramble-crypto = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
-bramble-transport = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
+bramble-sync = { git = "https://gitlab.com/stormproject/bramble.git", branch = "comp4300" }
+bramble-rendezvous = { git = "https://gitlab.com/stormproject/bramble.git", branch = "comp4300" }
+bramble-common = { git = "https://gitlab.com/stormproject/bramble.git", branch = "comp4300" }
+bramble-crypto = { git = "https://gitlab.com/stormproject/bramble.git", branch = "comp4300" }
+bramble-transport = { git = "https://gitlab.com/stormproject/bramble.git", branch = "comp4300" }
 log = "0.4.17"
 linked_hash_set = "0.1.4"
 linked-hash-map = "0.5.6"

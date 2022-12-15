@@ -242,6 +242,22 @@ dependencies = [
 [[package]]
 name = "bramble-common"
 version = "0.1.0"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=comp4300#dc9f2b505090111c3a853c124e3aa901a052ea6f"
+dependencies = [
+ "async-io",
+ "bramble-crypto 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures",
+ "pin-project",
+ "rand 0.8.5",
+ "serde",
+ "thiserror",
+ "tokio-socks",
+ "xsalsa20poly1305",
+]
+
+[[package]]
+name = "bramble-common"
+version = "0.1.0"
 source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#dc9f2b505090111c3a853c124e3aa901a052ea6f"
 dependencies = [
  "async-io",
@@ -274,6 +290,23 @@ dependencies = [
 [[package]]
 name = "bramble-crypto"
 version = "0.1.0"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=comp4300#dc9f2b505090111c3a853c124e3aa901a052ea6f"
+dependencies = [
+ "blake2",
+ "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
+ "hex",
+ "rand 0.8.5",
+ "rusqlite",
+ "salsa20",
+ "slice_as_array",
+ "subtle",
+ "x25519-dalek",
+ "xsalsa20poly1305",
+]
+
+[[package]]
+name = "bramble-crypto"
+version = "0.1.0"
 source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#dc9f2b505090111c3a853c124e3aa901a052ea6f"
 dependencies = [
  "blake2",
@@ -291,24 +324,24 @@ dependencies = [
 [[package]]
 name = "bramble-rendezvous"
 version = "0.1.0"
-source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#dc9f2b505090111c3a853c124e3aa901a052ea6f"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=comp4300#dc9f2b505090111c3a853c124e3aa901a052ea6f"
 dependencies = [
- "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
- "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
+ "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
+ "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
  "futures",
 ]
 
 [[package]]
 name = "bramble-sync"
 version = "0.1.0"
-source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#dc9f2b505090111c3a853c124e3aa901a052ea6f"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=comp4300#dc9f2b505090111c3a853c124e3aa901a052ea6f"
 dependencies = [
  "async-channel",
  "async-select-all",
  "async-trait",
  "bisetmap",
- "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
- "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
+ "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
+ "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
  "bramble-transport 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "easy-ext",
  "enum-map",
@@ -363,10 +396,10 @@ dependencies = [
 [[package]]
 name = "bramble-transport"
 version = "0.1.0"
-source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#dc9f2b505090111c3a853c124e3aa901a052ea6f"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=comp4300#dc9f2b505090111c3a853c124e3aa901a052ea6f"
 dependencies = [
- "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
- "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
+ "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
+ "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
  "chrono",
  "env_logger",
  "futures",
@@ -2115,11 +2148,11 @@ dependencies = [
  "base64",
  "bimap",
  "bisetmap",
- "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
- "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
+ "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
+ "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
  "bramble-rendezvous",
  "bramble-sync",
- "bramble-transport 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
+ "bramble-transport 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=comp4300)",
  "ed25519-dalek",
  "env_logger",
  "fallible-iterator",
