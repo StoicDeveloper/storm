@@ -3,6 +3,4 @@
 members = [
 	"storm-backend",
 	"storm-cli"
-	#"storm-frontend",
-	#"storm-platform"
 ]

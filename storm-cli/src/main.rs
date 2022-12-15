@@ -185,7 +185,6 @@ impl LoggedInCliState {
         loop {
             print!("{}", self.prompt);
             std::io::stdout().flush().unwrap();
-            //tokio::spawn(async { stdout.flush().await? })?;
             let mut line = String::new();
             use Command::*;
             select!(

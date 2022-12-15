@@ -1,10 +1,7 @@
 use bimap::BiMap;
 use bramble_sync::sync::ID;
 use fallible_iterator::FallibleIterator;
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::{collections::HashMap, path::Path};
 
 use bisetmap::BisetMap;
 use bramble_crypto::{KeyPair, PublicKey, SecretKey, KEY_LEN};
@@ -55,16 +52,6 @@ impl Profile {
         )
         .unwrap();
 
-        //conn.execute(
-        //"
-        //CREATE TABLE contacts (
-        //key BLOB,
-        //name TEXT,
-        //PRIMARY KEY(key, name),
-        //);",
-        //(),
-        //).unwrap();
-
         conn.execute(
             "
         CREATE TABLE peers (
@@ -106,34 +93,37 @@ impl Profile {
     }
 
     pub fn add_peer(&mut self, name: &str, key: PublicKey) {
-        let mut conn = &mut self.conn;
+        let conn = &mut self.conn;
         conn.execute(
             "
             INSERT INTO peers
             VALUES (?, ?, ?);",
             params![self.name, name, key.as_ref()],
-        );
+        )
+        .unwrap();
         self.peers.insert(name.to_string(), key);
     }
 
     pub fn add_group(&mut self, group: &str, id: &ID) {
-        let mut conn = &mut self.conn;
+        let conn = &mut self.conn;
         conn.execute(
             "
             INSERT INTO msg_groups
             VALUES (?, ?, ?);",
             params![self.name, group, id],
-        );
+        )
+        .unwrap();
         self.groups.insert(group.to_string(), *id);
     }
     pub fn add_peer_to_group(&mut self, peer: PublicKey, group: &str) {
-        let mut conn = &mut self.conn;
+        let conn = &mut self.conn;
         conn.execute(
             "
             INSERT INTO sharing_groups
             VALUES (?, ?, ?);",
             params![self.name, peer.as_ref(), group],
-        );
+        )
+        .unwrap();
         self.peer_groups.insert(peer, group.to_string());
     }
     fn load_key(conn: &Connection, name: &str) -> KeyPair {
@@ -143,7 +133,6 @@ impl Profile {
             FROM profiles
             WHERE name = ?;",
             [name],
-            //|row| Ok((key_from_sql(row.get_unwrap(0))))
             |row| row.get(0),
         );
         match res {
@@ -175,28 +164,12 @@ impl Profile {
             .map(|row| Ok((row.get_unwrap(0), row.get_unwrap(1))))
             .collect()
             .unwrap();
-        let mut map: BisetMap<PublicKey, String> = BisetMap::new();
+        let map: BisetMap<PublicKey, String> = BisetMap::new();
         contact_groups
             .into_iter()
             .for_each(|(key, name)| map.insert(key, name));
-        //.for_each(|(key, name)| match map.get_mut(&key) {
-        //Some(names) => names.push(name),
-        //None => {
-        //map.insert(key, vec![name]);
-        //}
-        //});
         map
     }
-
-    //pub fn group_list(&self) -> Vec<String> {
-    //self.groups
-    //.flat_collect()
-    //.into_iter()
-    //.map(|(_, group)| group)
-    //.collect::<HashSet<String>>()
-    //.into_iter()
-    //.collect()
-    //}
 
     fn load_peers(conn: &Connection, name: &str) -> HashMap<String, PublicKey> {
         let mut stmt = conn
@@ -242,5 +215,6 @@ fn insert_key(conn: &Connection, name: &str, key: &KeyPair) {
         INSERT INTO profiles
         VALUES (?, ?);",
         params![name, key.secret().as_ref()],
-    );
+    )
+    .unwrap();
 }

@@ -366,6 +366,7 @@ impl TorControl {
 #[cfg(test)]
 mod test {
     use crate::controller::tor::*;
+    use async_socks5::{connect, AddrKind, SocksListener};
     use futures::executor::block_on;
     use futures::FutureExt;
     use futures_timer::Delay;
@@ -373,11 +374,14 @@ mod test {
     use libtor::*;
     use std::io::Read;
     use std::net::SocketAddr;
+    use std::net::{Ipv4Addr, SocketAddrV4};
     use std::sync::mpsc;
     use std::thread::{self, JoinHandle};
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+    use tokio::{io::BufStream, net::TcpStream};
+    use tokio_socks::tcp::{Socks5Listener, Socks5Stream};
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
@@ -411,8 +415,6 @@ mod test {
             Err(e) => println!("failed to start tor"),
         }
     }
-    use async_socks5::{connect, AddrKind, SocksListener};
-    use tokio::{io::BufStream, net::TcpStream};
 
     // This creates a dependency on tokio. To remove it in the future, if desired, look at this
     // link: https://thomask.sdf.org/blog/2021/03/08/bridging-sync-async-code-in-rust.html
@@ -446,23 +448,13 @@ mod test {
     }
 
     #[test]
-    //#[ignore]
+    #[ignore]
     fn create_connection() {
         let tor = TorInstance::new(vec![8004]);
     }
 
-    use std::net::{Ipv4Addr, SocketAddrV4};
-    //#[tokio::test]
-    //fn conn_rev_proxy() {
-    //create_connection();
-    //let socks_addr = SocketAddr::V4(SocketAddr::new(Ipv4Addr::LOCALHOST, 19050));
-    //let local_addr =
-    //let listener = TcpListener::bind(local_addr).await.unwrap();
-
-    //}
-
-    use tokio_socks::tcp::{Socks5Listener, Socks5Stream};
     #[tokio::test]
+    #[ignore]
     async fn conn_tokio_socks() {
         //let proxy_addr = SocketAddr::V4(SocketAddr::new(Ipv4Addr::LOCALHOST, 19050));
         create_connection();
@@ -506,12 +498,4 @@ mod test {
             std::str::from_utf8(&buf[0..n]).unwrap()
         );
     }
-
-    // create hidden services
-
-    // pass messages from one hidden service to another
-
-    // create rendezvous connection over hidden service
-
-    // pass data from one rendezvous socket to another
 }

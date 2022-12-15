@@ -6,13 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#bramble-rendezvous = { path = '../../bramble-rs/bramble-rendezvous' }
-#bramble-common = { path = '../../bramble-rs/bramble-common' }
-#async-fuse = "0.11.2"
-#bramble-crypto = { path = '../../bramble-rs/bramble-crypto' }
-#bramble-transport = { path = '../../bramble-rs/bramble-transport' }
-#bramble-sync = { path = '../../bramble-rs/bramble-sync' }
-#bramble = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
 bramble-sync = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
 bramble-rendezvous = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
 bramble-common = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
@@ -27,7 +20,6 @@ env_logger = "0.9.3"
 rand = "0.8.5"
 portpicker = "0.1.1"
 slice_as_array = "1.1.0"
-#bramble-transport = "0.1.0"
 futures = "0.3.0"
 ed25519-dalek = "1.0.1"
 base64 = "0.13"

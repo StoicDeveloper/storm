@@ -3,8 +3,4 @@
 #![feature(associated_type_bounds)]
 #![feature(const_socketaddr)]
 #[macro_use]
-#[allow(unused_imports)]
-#[allow(dead_code)]
-#[allow(unused_must_use)]
-#[allow(unused_mut)]
 pub mod controller;

@@ -1,61 +1,28 @@
-//use libtor::{Tor, TorFlag, TorAddress, HiddenServiceVersion};
 use crate::controller::rendezvous::*;
 use crate::controller::tor::*;
 use async_channel::*;
 use async_select_all::SelectAll;
-use bramble_common::transport::{Id, Latency};
 use bramble_crypto::KeyPair;
 use bramble_crypto::PublicKey;
 use bramble_crypto::Role;
-use bramble_rendezvous::Rendezvous;
 use bramble_sync::simple_client::{ClientItem, ClientMessage, MessageBody, SimpleClient};
 use bramble_sync::sync::{fuse_select, Client, Group, SyncMode, SyncProtocol, ID};
 use bramble_transport::*;
-use futures::executor::block_on;
+use futures::future::Fuse;
+use futures::future::FusedFuture;
 use futures::future::LocalBoxFuture;
-use futures::future::{BoxFuture, FusedFuture};
-use futures::future::{Fuse, Select};
-use futures::{select, AsyncRead, AsyncWrite, Future, FutureExt};
-use futures_timer::Delay;
-use log::{debug, error, info, trace, warn};
+use futures::{select, Future, FutureExt};
+use log::trace;
 use std::collections::HashSet;
-use std::pin::Pin;
-//use bramble_sync::SyncProtocol;
-//use bramble_transport::Connection;
-use libtor::{Tor, TorFlag};
-use torut::control::UnauthenticatedConn;
-//use rand::{thread_rng, Rng};
-use crate::controller::tor::*;
-use tokio::net::TcpStream;
-use torcc_rs::controller::{HiddenService, TorController};
-
-use gag::BufferRedirect;
 use std::collections::{HashMap, VecDeque};
-use std::io::{Read, Write};
 use std::rc::Rc;
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
-//use std::error::Error;
-//use ed25519::
-//use std::fmt::Display
+use std::sync::{Arc, Mutex};
 
-// expose start, rendezvous(), BRPSocket.write(), BRPSocket.read(), BRPSocket.close()
-// use Tor and torcc-rs controller
-
-// TODO:
-// - make a tor socks connection
-// - wrap a tor socks connection in a rendezvous connection
-// - wrap a rendezvous connection in a transport connection
-// - pass a transport connection to bramble-sync
-
-const CONTROL_PORT: u16 = 39085;
-const CONTROL_ADDR: (&'static str, u16) = ("127.0.0.1", CONTROL_PORT);
-const SERVICE_PORT: u16 = 9150;
 const ROOT_KEY_LABEL: &[u8] = b"org.briarproject.bramble.transport.agreement/ROOT_KEY";
 
 pub type ControllerOutput = bramble_sync::simple_client::ClientItem;
 pub use bramble_sync::simple_client::{ClientItem as Item, ClientMessage as Message};
+#[allow(dead_code)]
 pub struct StormController {
     name: String,
     file: String,
@@ -64,13 +31,11 @@ pub struct StormController {
     key: KeyPair,
     connector: Connector,
     stream_numbers: HashMap<PublicKey, u64>,
-    //pending_connections: SelectAll<LocalBoxFuture<'static, TorSocket>>,
     client: SimpleClient,
     sync: SyncProtocol<TorSocket>,
     messages: Vec<ClientMessage>,
 }
 
-#[allow(unused_variables)]
 impl StormController {
     pub fn new(name: &str, file: &str, tor: Rc<Mutex<TorInstance>>, key: KeyPair) -> Self {
         let tor_controller = Arc::new(Mutex::new(TorControl::new(
@@ -101,17 +66,14 @@ impl StormController {
             key,
             connector: Connector::new(name.to_string(), key, tor_controller.clone()),
             stream_numbers: HashMap::new(),
-            //pending_connections: SelectAll::new(),
             client,
             sync,
             messages: vec![],
         };
-        //block_on(cont.mk_auth_tor_conn());
-        //cont.tor.set_control_socket();
-        //cont.load_protocol_info();
         cont
     }
 
+    #[allow(dead_code)]
     fn peek_message(&mut self) -> Option<ClientMessage> {
         match self.client.pop() {
             Some(output) => {
@@ -124,12 +86,13 @@ impl StormController {
     }
     pub fn add_group(&mut self, name: String) -> Group {
         self.client.add_group(name)
-        //bramble_sync::test::group(&name)
     }
 
+    #[allow(dead_code)]
     fn get_name(&self) -> String {
         self.name.clone()
     }
+    #[allow(dead_code)]
     fn get_file(&self) -> String {
         self.file.clone()
     }
@@ -137,8 +100,6 @@ impl StormController {
         select!(
             (peer, res) = self.connector.next_connection().fuse() => {
                 self.handle_connection_result(peer, res)
-                //let conn = res.unwrap();
-                //self.add_connection(conn);
             },
             _ = self.sync.sync(false).fuse() => {
                 trace!("SyncProtocol inactive");
@@ -180,13 +141,10 @@ impl StormController {
     }
     pub async fn run_to_output(&mut self) -> ControllerOutput {
         loop {
-            //trace!(target: "controller", "running controller loop");
             select!(
                 (peer, res) = self.connector.next_connection() => {
                     println!("Connected to peer {}", peer);
                     self.handle_connection_result(peer, res)
-                    //let conn = res.unwrap();
-                    //self.add_connection(conn);
                 }
                 _ = self.sync.sync(false).fuse() => {
                     trace!(target: "controller","SyncProtocol inactive");
@@ -200,35 +158,30 @@ impl StormController {
         }
     }
 
+    #[allow(dead_code)]
     async fn get_next_connection(&mut self) -> TorSocket {
         let (_, res) = self.connector.next_connection().await;
         res.unwrap()
     }
 
+    #[allow(dead_code)]
     async fn complete_connections(&mut self) {
         while self.has_pending_connections() {
-            //println!(
-            //"{} has {} pending connections",
-            //self.name,
-            //self.connector.peers.len()
-            //);
-            //let conn = self.get_next_connection().await;
             let (peer, res) = self.connector.next_connection().await;
             self.handle_connection_result(peer, res);
-            //self.add_connection(conn);
         }
     }
 
+    #[allow(dead_code)]
     fn has_pending_connections(&self) -> bool {
         !self.connector.peers.is_empty()
     }
 
     pub fn connect_peer_slice(&mut self, peer: [u8; 32]) {
-        //let fut = self.create_rendezvous(peer);
         self.connector.connect_peer(peer.into());
     }
+
     pub fn connect_peer(&mut self, peer: PublicKey) {
-        //let fut = self.create_rendezvous(peer);
         self.connector.connect_peer(peer);
     }
     pub fn create_rendezvous(&mut self, peer: PublicKey) -> LocalBoxFuture<'static, TorSocket> {
@@ -246,7 +199,6 @@ impl StormController {
     }
 
     pub fn create_transport(&mut self, rdvs: TorSocket, peer: PublicKey) -> Connection<TorSocket> {
-        //println!("create_transport");
         let root_key = bramble_crypto::kex(ROOT_KEY_LABEL, self.key.secret(), &peer, &[]);
         match self.stream_numbers.get_mut(&peer) {
             Some(num) => *num = *num + 1,
@@ -272,21 +224,15 @@ impl StormController {
     pub fn handle_connection_result(&mut self, peer: PublicKey, res: Result<TorSocket>) {
         match res {
             Ok(conn) => self.add_connection(conn),
-            Err(e) => {
+            Err(_) => {
                 trace!(target: "network", "{} connection attempt failed, retrying", self.name);
                 self.connect_peer(peer);
             }
         }
     }
 
-    pub fn load_profile_info(name: String) {
-        // load our private key, or create one
-        // load our contacts' public keys
-        // load the groups we are sharing with each contact.
-    }
-
     pub fn connect_peer_with_group(&mut self, peer: &PublicKey) -> String {
-        let (mut alice, mut bob);
+        let (alice, bob);
         match get_role(self.key.public(), peer) {
             Role::Alice => {
                 alice = self.key.public();
@@ -299,20 +245,14 @@ impl StormController {
         }
         let group_name = format!("DM-{}-{}", alice, bob);
         self.connect_peer(*peer);
-        //self.add_group(&group_name);
         group_name
     }
-
-    //pub async fn create_storm_socket(&mut self, peer: PublicKey) -> TorSocket {
-    //self.create_rendezvous(peer).await
-    //}
 }
 
 // A struct that handles connecting to peers
 struct Connector {
     // needs: list of connecting peers, a handle to the thread, receivers and senders to induce the
     // thread to connect to a new peer, and to get the result once a connection is made
-    //handle: tokio::task::LocalSet,
     peers: HashSet<PublicKey>,
     pending: VecDeque<PublicKey>,
     sender: Sender<PublicKey>,
@@ -324,7 +264,6 @@ impl Connector {
         // start the worker thread
         let (key_sender, key_recv) = async_channel::unbounded::<PublicKey>();
         let (sock_sender, sock_recv) = async_channel::unbounded::<(PublicKey, Result<TorSocket>)>();
-        //println!("spawning connector thread for {}", &name);
         let builder = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -338,7 +277,6 @@ impl Connector {
                     let mut send_queue: VecDeque<(PublicKey, Result<TorSocket>)> = VecDeque::new();
                     let mut peers = SelectAll::new();
                     loop {
-                        //println!("connector loop {}", &name);
                         select!(
                             _ = sending => {
                                 if let Some(res) = send_queue.pop_back() {
@@ -405,21 +343,12 @@ impl Connector {
                         let res = res.unwrap();
                         self.peers.remove(&res.0);
                         return res;
-                        //return match res {
-                            //(key, Ok(sock)) => (key, Ok(sock)),
-                            //(key, Err(e)) =>
-                                //(key, Err(e))
-                        //};
                     }
                 );
             }
             let res = self.receiver.recv().await.unwrap();
             self.peers.remove(&res.0);
             return res;
-            //return match res {
-            //(key, Ok(sock)) => (key, Ok(sock)),
-            //(key, Err(e)) => (key, Err(e)),
-            //};
         }
         .fuse();
     }
@@ -555,12 +484,9 @@ mod test {
             cont2.create_rendezvous(*key1.public())
         );
         let wf1 = sock1.write_all(b"Sock1Hello");
-        //let mut buf1 = [0u8; 50];
-        //let rf1 = sock2.read(&mut buf1);
         let mut buf1 = [0u8; 10];
         let rf1 = sock2.read_exact(&mut buf1);
         let (_, _n1) = join!(wf1, rf1);
-        //let res = std::str::from_utf8(&buf1[0..n1.unwrap()]).unwrap();
         let res = std::str::from_utf8(&buf1).unwrap();
         println!("{}", &res);
         assert_eq!("Sock1Hello".to_string(), res);
@@ -781,19 +707,6 @@ mod test {
                     assert_sync_state_seen(c2, &k1, &msg.id, true);
                 }
             })
-
-            //peers.iter().for_each(|peer| {
-            //edges.iter().for_each(|(peer_a, peer_b)| {
-            //let c1 = matching_controller(controllers, peer);
-
-            //if peer_a == peer {
-            //let c2 = matching_controller(controllers, peer_b);
-            //assert_sync_state_seen(&c1.1, &c2.2.public(), &msg.id, true);
-            //} else if peer_b == peer {
-            //let c2 = matching_controller(controllers, peer_a);
-            //assert_sync_state_seen(&c1.1, &c2.2.public(), &msg.id, true);
-            //}
-            //});
         }
     }
     fn run_network_until_inactive(mut controllers: Vec<&mut StormController>) {
@@ -929,13 +842,11 @@ mod test {
         join!(c1.run_to_output(), c2.run_to_output());
 
         let _msg0 = block_insert_message(&mut c1, group.id, message(None, "Blah", vec![]));
-        //println!("{:?}", msg0)
         select!(_ = c1.run_to_output().fuse() => {}, _ = c2.run_to_output().fuse() => {});
     }
     #[tokio::test]
     async fn sync_one_network_message() {
         init();
-        //let tor = TorInstance::new_ref(vec![]);
         let names = vec!["Alice", "Bob"];
         let edges = vec![("Alice", "Bob")];
         let memberships = vec![("Group", names.clone())];
@@ -948,22 +859,6 @@ mod test {
         network.run_to_all_inactive();
         let msg_a = network.peek_msg("Alice");
         network.assert_msg_fully_shared(&msg_a);
-        //futures::future::join_all(
-        //network
-        //.controllers
-        //.values_mut()
-        //.map(|cont| cont.complete_connections()),
-        //)
-        //.await;
-        //network.run_to_all_inactive();
-
-        //select!(
-        //_ = Delay::new(Duration::from_millis(1000)).fuse() => {},
-        //_ = c1.run_to_exit().fuse() => {},
-        //_ = c2.run_to_exit().fuse() => {},
-        //);
-        //let msg_a = network.peek_msg("Alice");
-        //network.assert_msg_fully_shared(&msg_a);
     }
 
     #[tokio::test]
@@ -998,8 +893,6 @@ mod test {
         let _names_str: Vec<_> = names.iter().map(|name| (*name).to_string()).collect();
         let edges = vec![("Alice", "Bob"), ("Charlotte", "Bob"), ("Drake", "Bob")];
         let memberships = vec![("Group", names.clone())];
-
-        //let (mut controllers, groups) = make_network(&names_str, &edges, &memberships);
 
         let mut network = Network::new(&names, &edges, &memberships);
         let group = network.get_group("Group").id;
@@ -1038,8 +931,6 @@ mod test {
         let names = vec!["Ashley", "Bingo"];
         let edges = vec![("Ashley", "Bingo")];
         let memberships = vec![("Group", names.clone())];
-
-        //let (mut controllers, groups) = make_network(&names_str, &edges, &memberships);
 
         let mut network = Network::new(&names, &edges, &memberships);
         let group = network.get_group("Group").id;
