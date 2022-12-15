@@ -46,3 +46,4 @@ torut = "0.2.1"
 #torut = { path = '../../torut' }
 fallible-iterator = "0.2.0"
 rusqlite = {version = "0.28.0", features = ["bundled", "vtab", "array"]}
+bimap = "0.6.2"

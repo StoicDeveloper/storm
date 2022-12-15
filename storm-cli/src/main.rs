@@ -193,17 +193,19 @@ impl LoggedInCliState {
                             Exit => return (),
                             PrintKey => println!("{}",hex::encode(self.user.key.public())),
                             NewGroup(desc) => {
-                                match self.user.groups.contains(desc) {
+                                match self.user.groups.contains_left(desc) {
                                     true => print!("This group already exists"),
                                     false => {
-                                        self.user.add_group(desc);
+                                        let id = get_group(desc).id;
+                                        self.user.add_group(desc, &id);
                                         self.controller.add_group(desc.to_string());
                                     }
                                 }
                             }
                             EnterGroup(desc) => {
-                                if self.user.groups.contains(desc) {
+                                if self.user.groups.contains_left(desc) {
                                     self.curr_group = Some(desc.clone());
+                                    self.prompt = format!("Storm|{}|{}|>>>", self.user.name, desc);
                                 } else {
                                     println!("You are not in group {}.", desc);
                                 }
@@ -213,7 +215,7 @@ impl LoggedInCliState {
                                 // are you in the group?
                                 // are you not already sharing the group with that peer?
                                 //
-                                let has_group = self.user.groups.contains(group);
+                                let has_group = self.user.groups.contains_left(group);
                                 let has_contact = self.user.peers.contains_key(peer);
                                 match (has_group, has_contact) {
                                     (false, _) => print!("You do not have this group."),
@@ -232,7 +234,7 @@ impl LoggedInCliState {
                                 }
                             }
                             ListGroups => {
-                                self.user.groups.iter().for_each(|group| println!("{}", group));
+                                self.user.groups.iter().for_each(|(group,_)| println!("{}", group));
                             }
                             ListPeers => {
                                 self.user.peers.iter().for_each(|(name, key)| println!("{} - {}", name, key));
@@ -278,7 +280,8 @@ impl LoggedInCliState {
             Message(msg) => {
                 println!(
                     "{} - {} says: {}",
-                    self.curr_group.as_ref().unwrap(),
+                    self.user.groups.get_by_right(&msg.group).unwrap(),
+                    //self.curr_group.as_ref().unwrap(),
                     msg.body.from,
                     msg.body.text
                 );

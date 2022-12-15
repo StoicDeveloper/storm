@@ -177,6 +177,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
+name = "bimap"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc0455254eb5c6964c4545d8bac815e1a1be4f3afe0ae695ea539c12d728d44b"
+
+[[package]]
 name = "bisetmap"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2107,6 +2113,7 @@ dependencies = [
  "async-select-all",
  "async-socks5",
  "base64",
+ "bimap",
  "bisetmap",
  "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
  "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",

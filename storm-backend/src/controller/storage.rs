@@ -1,3 +1,5 @@
+use bimap::BiMap;
+use bramble_sync::sync::ID;
 use fallible_iterator::FallibleIterator;
 use std::{
     collections::{HashMap, HashSet},
@@ -13,7 +15,7 @@ pub struct Profile {
     pub conn: Connection,
     pub name: String,
     pub key: KeyPair,
-    pub groups: HashSet<String>,
+    pub groups: BiMap<String, ID>,
     pub peer_groups: BisetMap<PublicKey, String>,
     pub peers: HashMap<String, PublicKey>,
 }
@@ -81,6 +83,7 @@ impl Profile {
         CREATE TABLE msg_groups (
             user TEXT,
             name TEXT,
+            id BLOB,
             PRIMARY KEY(user, name),
             FOREIGN KEY(user) REFERENCES profiles(name) ON DELETE CASCADE
         );",
@@ -113,15 +116,15 @@ impl Profile {
         self.peers.insert(name.to_string(), key);
     }
 
-    pub fn add_group(&mut self, group: &str) {
+    pub fn add_group(&mut self, group: &str, id: &ID) {
         let mut conn = &mut self.conn;
         conn.execute(
             "
             INSERT INTO msg_groups
-            VALUES (?, ?);",
-            params![self.name, group],
+            VALUES (?, ?, ?);",
+            params![self.name, group, id],
         );
-        self.groups.insert(group.to_string());
+        self.groups.insert(group.to_string(), *id);
     }
     pub fn add_peer_to_group(&mut self, peer: PublicKey, group: &str) {
         let mut conn = &mut self.conn;
@@ -213,11 +216,11 @@ impl Profile {
             .unwrap();
         peers.into_iter().collect()
     }
-    pub fn load_groups(conn: &Connection, name: &str) -> HashSet<String> {
+    pub fn load_groups(conn: &Connection, name: &str) -> BiMap<String, ID> {
         let mut stmt = conn
             .prepare(
                 "
-            SELECT name
+            SELECT name, id
             FROM msg_groups
             WHERE user = ?
             ;",
@@ -225,9 +228,11 @@ impl Profile {
             .unwrap();
         stmt.query([name])
             .unwrap()
-            .map(|row| Ok(row.get_unwrap(0)))
-            .collect()
+            .map(|row| Ok((row.get_unwrap(0), row.get_unwrap(1))))
+            .collect::<Vec<_>>()
             .unwrap()
+            .into_iter()
+            .collect()
     }
 }
 
