@@ -242,7 +242,7 @@ dependencies = [
 [[package]]
 name = "bramble-common"
 version = "0.1.0"
-source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#d26a5b8c34a794ef00eab85e24f63dcf2210c443"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#b43292b8d8043c2a926df3c98441c5b125477c0c"
 dependencies = [
  "async-io",
  "bramble-crypto 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -274,7 +274,7 @@ dependencies = [
 [[package]]
 name = "bramble-crypto"
 version = "0.1.0"
-source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#d26a5b8c34a794ef00eab85e24f63dcf2210c443"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#b43292b8d8043c2a926df3c98441c5b125477c0c"
 dependencies = [
  "blake2",
  "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
@@ -291,7 +291,7 @@ dependencies = [
 [[package]]
 name = "bramble-rendezvous"
 version = "0.1.0"
-source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#d26a5b8c34a794ef00eab85e24f63dcf2210c443"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#b43292b8d8043c2a926df3c98441c5b125477c0c"
 dependencies = [
  "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
  "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
@@ -301,7 +301,7 @@ dependencies = [
 [[package]]
 name = "bramble-sync"
 version = "0.1.0"
-source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#d26a5b8c34a794ef00eab85e24f63dcf2210c443"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#b43292b8d8043c2a926df3c98441c5b125477c0c"
 dependencies = [
  "async-channel",
  "async-select-all",
@@ -363,7 +363,7 @@ dependencies = [
 [[package]]
 name = "bramble-transport"
 version = "0.1.0"
-source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#d26a5b8c34a794ef00eab85e24f63dcf2210c443"
+source = "git+https://gitlab.com/stormproject/bramble.git?branch=industry-project#b43292b8d8043c2a926df3c98441c5b125477c0c"
 dependencies = [
  "bramble-common 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
  "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
@@ -2147,6 +2147,7 @@ name = "storm-cli"
 version = "0.1.0"
 dependencies = [
  "bramble-crypto 0.1.0 (git+https://gitlab.com/stormproject/bramble.git?branch=industry-project)",
+ "env_logger",
  "futures",
  "hex",
  "shellfish",

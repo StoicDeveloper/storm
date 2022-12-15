@@ -11,6 +11,7 @@ edition = "2021"
 #storm-platform = { path = "storm-platform", version = "0.1.0" }
 shellfish = { version = "0.7.0", features = ["async", "app"] }
 bramble-crypto = { git = "https://gitlab.com/stormproject/bramble.git", branch = "industry-project" }
+env_logger = "0.9.3"
 hex = "0.4.3"
 slice_as_array = "1.1.0"
 tokio = { version = "1.23.0", features = ["rt-multi-thread", "rt", "macros"] }

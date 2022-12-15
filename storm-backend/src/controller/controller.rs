@@ -183,7 +183,7 @@ impl StormController {
             //trace!(target: "controller", "running controller loop");
             select!(
                 (peer, res) = self.connector.next_connection() => {
-                    println!("conn made");
+                    println!("Connected to peer {}", peer);
                     self.handle_connection_result(peer, res)
                     //let conn = res.unwrap();
                     //self.add_connection(conn);
@@ -390,7 +390,6 @@ impl Connector {
             return Fuse::terminated();
         }
         return async {
-            println!("connecting");
             loop {
                 if self.pending.is_empty() {
                     break;

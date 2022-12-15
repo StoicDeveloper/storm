@@ -24,6 +24,7 @@ extern crate tokio;
 use futures::select;
 use futures::FutureExt;
 //use std::io;
+use env_logger::init;
 use storm_backend::controller::controller::get_group;
 use storm_backend::controller::controller::ControllerOutput;
 #[allow(unused_imports)]
@@ -122,6 +123,23 @@ impl InitialCliState {
         state.user.peers.iter().for_each(|(_, key)| {
             state.controller.connect_peer(*key);
         });
+        // the below doesn't work for unconnected peers
+        //println!("loaded peer groups {:?}", state.user.peer_groups.collect());
+        state
+            .user
+            .peer_groups
+            .collect()
+            .into_iter()
+            .for_each(|(peer, groups)| {
+                groups.into_iter().for_each(|group| {
+                    let group_id = state.user.groups.get_by_left(&group).unwrap();
+                    //println!(
+                    //"attempting to add {} to {} with group id {}",
+                    //peer, group, group_id
+                    //);
+                    state.controller.add_peer_to_group(&peer, group_id);
+                });
+            });
         state
     }
 
@@ -299,6 +317,7 @@ impl LoggedInCliState {
 
 #[tokio::main]
 async fn main() {
+    init();
     if let Some(mut state) = InitialCliState::new().run_to_login().await {
         state.run().await;
     }
